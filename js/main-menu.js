@@ -403,7 +403,7 @@
     const INDICATOR_WIDTH = 48;
     const INDICATOR_HEIGHT = INDICATOR_WIDTH + 20;
     const INDICATOR_TOP_OFFSET = 20;
-    const INDICATOR_LEFT_BASE_OFFSET = -45;
+    const INDICATOR_LEFT_BASE_OFFSET = -55;
     const FACTORY_BOTTOM_PADDING = 6;
     const INDICATOR_TRANSITION = 'opacity 0.3s ease, transform 0.3s ease';
 
