@@ -282,7 +282,7 @@
             align-items:center;
             z-index:1000;
             opacity:1;
-            transition:all 1.2s cubic-bezier(0.34, 1.56, 0.64, 1);
+            transition:opacity 1.2s cubic-bezier(0.34, 1.56, 0.64, 1), transform 1.2s cubic-bezier(0.34, 1.56, 0.64, 1);
         }
         
         /* Исправление позиционирования индикаторов для Telegram Mini App */
@@ -292,7 +292,7 @@
         .profit-indicator.show{opacity:1;transform:scale(1);}
 
         .profit-indicator:hover .profit-indicator-wrapper{
-            transform:scale(1.1);
+            transform:none;
             box-shadow:0 8px 25px rgba(0,0,0,0.5);
             transition:all 0.2s ease;
         }
@@ -670,9 +670,6 @@
         .btn-main{width:100%;background:#000;border:none;color:#fff;border-radius:14px;padding:14px;font-size:16px;font-weight:700;cursor:pointer;}
         .progress-bar{height:14px;background:#bdbdbd;border-radius:7px;overflow:hidden;margin:6px 0 10px;}
         .progress-bar .fill{height:100%;width:0;background:#4caf50;}
-        /* скрываем старые круги дохода */
-        #income-progress,#income-bank,#factory-income-progress,#factory-income-bank,#storage-sale-progress{display:none!important;}
-        
         /* Стили для слайдеров в меню доставки */
         input[type="range"] {
             -webkit-appearance: none;

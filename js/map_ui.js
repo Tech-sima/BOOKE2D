@@ -12,10 +12,6 @@ let mapUIInitialized = false;
     // оставляем слушатель кликов из main.js для новых платформ 
 
     const BUILDING_NAMES = {library:'Библиотека',factory:'Завод',storage:'Почта',print:'Типография'};
-    // скрываем старые круги/банки, но не ломаем логику
-    const hideOldIds = ['income-progress','income-bank','factory-income-progress','factory-income-bank','storage-sale-progress'];
-    hideOldIds.forEach(id=>{const el=document.getElementById(id); if(el) el.style.display='none';});
-
     const btnShowAll = document.getElementById('btn-show-all');
     const infoPanel  = document.getElementById('building-info-panel');
 

@@ -399,6 +399,50 @@
         saveBuildingsData();
         updateProfitIndicators();
     }
+
+    const INDICATOR_WIDTH = 48;
+    const INDICATOR_HEIGHT = INDICATOR_WIDTH + 20;
+    const INDICATOR_TOP_OFFSET = 20;
+    const INDICATOR_LEFT_BASE_OFFSET = -40;
+    const FACTORY_BOTTOM_PADDING = 6;
+    const INDICATOR_TRANSITION = 'opacity 0.3s ease, transform 0.3s ease';
+
+    function positionProfitIndicator(indicator, zoneRect, buildingType) {
+        if (!indicator || !zoneRect) return;
+        const centerX = zoneRect.left + zoneRect.width / 2;
+        let leftOffset = INDICATOR_LEFT_BASE_OFFSET;
+        if (buildingType === 'storage') {
+            leftOffset += 5;
+        }
+        const leftValue = centerX - INDICATOR_WIDTH / 2 + leftOffset - 10;
+        let topValue;
+        if (buildingType === 'factory') {
+            topValue = zoneRect.bottom - INDICATOR_HEIGHT - FACTORY_BOTTOM_PADDING;
+            if (topValue < 0) {
+                topValue = 0;
+            }
+        } else {
+            const centerY = zoneRect.top + zoneRect.height / 2;
+            topValue = centerY - INDICATOR_HEIGHT / 2 - INDICATOR_TOP_OFFSET;
+        }
+        indicator.style.right = 'auto';
+        indicator.dataset.positionAnchor = buildingType === 'factory' ? 'sprite-bottom' : 'center';
+
+        const roundedLeft = Math.round(leftValue);
+        const roundedTop = Math.round(topValue);
+        const lastLeft = indicator.dataset.lastLeft;
+        const lastTop = indicator.dataset.lastTop;
+
+        if (`${lastLeft}` !== `${roundedLeft}px` || `${lastTop}` !== `${roundedTop}px`) {
+            indicator.style.transition = 'none';
+            indicator.style.left = `${roundedLeft}px`;
+            indicator.style.top = `${roundedTop}px`;
+            indicator.dataset.lastLeft = `${roundedLeft}px`;
+            indicator.dataset.lastTop = `${roundedTop}px`;
+            indicator.style.transition = INDICATOR_TRANSITION;
+        }
+    }
+
     // Функция создания и обновления индикаторов сотрудников
     function updateProfitIndicators() {
         // Если индикаторы подавлены (после свайпа) — ничего не делаем
@@ -435,15 +479,7 @@
             return;
         }
         
-        // Удаляем все старые индикаторы
-        document.querySelectorAll('.profit-indicator').forEach(indicator => {
-            if (indicator && indicator.parentNode) {
-                indicator.remove();
-            }
-        });
-        // Сброс состояния анимации кругов, если ранее существовало
         if (!window._profitRingState) { window._profitRingState = {}; }
-        window._profitRingState = {};
         const RING_DURATIONS_MS = { library: 1000, factory: 3000, storage: 3000, print: 2000 };
         const RING_COLORS = { library: '#27ae60', factory: '#2196f3', storage: '#ff9800', print: '#9c27b0' };
         
@@ -452,22 +488,18 @@
         
         buildingTypes.forEach(buildingType => {
             const building = buildingsData[buildingType];
+            const existingState = window._profitRingState[buildingType];
             
-            // Проверяем, не существует ли уже индикатор для этого здания
-            const existingIndicator = document.getElementById(`profit-${buildingType}`);
-            if (existingIndicator) {
-                existingIndicator.remove();
-            }
-            
-            // Для некупленных зданий индикаторы и прогресс-круги не показываем
             if (!building || !building.isOwned) {
+                if (existingState && existingState.el) {
+                    existingState.el.remove();
+                }
+                delete window._profitRingState[buildingType];
                 return;
             }
 
-            // Получаем позицию здания - сначала пробуем из pure-map, потом из building-zone
             let zoneRect = null;
             if (window.pureMap && typeof window.pureMap.getBuildingPosition === 'function') {
-                // Используем координаты из pure-map
                 const buildingPos = window.pureMap.getBuildingPosition(buildingType);
                 if (buildingPos) {
                     zoneRect = {
@@ -480,35 +512,33 @@
                     };
                 }
             }
-            
-            // Fallback: ищем building-zone, если pure-map не доступен
             if (!zoneRect) {
                 const zone = document.querySelector(`.building-zone[data-building="${buildingType}"]`);
                 if (zone) {
                     zoneRect = zone.getBoundingClientRect();
                 } else {
-                    return; // Не можем определить позицию
+                    return;
                 }
             }
             
-            // Создаем индикатор сотрудников для всех зданий (купленных и некупленных)
-            const indicator = document.createElement('div');
+            let indicator = existingState ? existingState.el : null;
+            const shouldCreate = !indicator;
+            if (shouldCreate) {
+                indicator = document.createElement('div');
             indicator.className = 'profit-indicator';
             indicator.id = `profit-${buildingType}`;
             indicator.classList.add('show');
+            }
             
-            // Обертка для круга
-            const circleWrapper = document.createElement('div');
+            let circleWrapper = shouldCreate ? document.createElement('div') : indicator.querySelector('.profit-indicator-wrapper');
+            if (shouldCreate) {
             circleWrapper.className = 'profit-indicator-wrapper';
+            }
             
-            // Определяем какую иконку показывать в зависимости от нанятого сотрудника
             let employeeIcon = '';
             if (building.isOwned) {
-                // Проверяем, есть ли назначенный сотрудник для этого здания
                 const assignedEmployee = Object.keys(hiredEmployees).find(emp => hiredEmployees[emp] === buildingType);
-                
                 if (assignedEmployee) {
-                    // Если есть назначенный сотрудник, показываем соответствующую иконку
                     switch(assignedEmployee) {
                         case 'redjy':
                             employeeIcon = '<img src="assets/svg/employees/redjy-hired.svg" style="width:44px;height:44px;filter:brightness(0.9);">';
@@ -523,111 +553,97 @@
                             employeeIcon = '<img src="assets/svg/employees/blumy-hired.svg" style="width:44px;height:44px;filter:brightness(0.9);">';
                             break;
                         default:
-                            // Если тип сотрудника не определен, показываем not-hired
                             employeeIcon = '<img src="assets/svg/employees/not-hired.svg" style="width:44px;height:44px;filter:brightness(0.9);">';
                     }
                 } else {
-                    // Если нет назначенного сотрудника, показываем not-hired
                     employeeIcon = '<img src="assets/svg/employees/not-hired.svg" style="width:44px;height:44px;filter:brightness(0.9);">';
                 }
             } else {
-                // Если здание не куплено, показываем not-hired
                 employeeIcon = '<img src="assets/svg/employees/not-hired.svg" style="width:44px;height:44px;filter:brightness(0.9);">';
             }
             
-            // Внутренние слои: прогресс-кольцо, внутренний затемнённый круг и аватар
-            const progressLayer = document.createElement('div');
-            progressLayer.className = 'pi-progress';
             const ringColor = RING_COLORS[buildingType] || '#ff6b9d';
+            let progressLayer;
+            let avatarLayer;
+            let profitLabel;
+            
+            if (shouldCreate) {
+                progressLayer = document.createElement('div');
+                progressLayer.className = 'pi-progress';
             progressLayer.style.setProperty('--pi-color', ringColor);
 
             const innerLayer = document.createElement('div');
             innerLayer.className = 'pi-inner';
 
-            const avatarLayer = document.createElement('div');
+                avatarLayer = document.createElement('div');
             avatarLayer.className = 'pi-avatar';
             avatarLayer.innerHTML = employeeIcon;
 
             circleWrapper.appendChild(progressLayer);
             circleWrapper.appendChild(innerLayer);
             circleWrapper.appendChild(avatarLayer);
-            
-            // Элемент для отображения накопленной прибыли
-            const profitLabel = document.createElement('div');
+            } else {
+                progressLayer = existingState.progressEl;
+                avatarLayer = existingState.avatarLayer;
+                progressLayer.style.setProperty('--pi-color', ringColor);
+                if (avatarLayer && avatarLayer.innerHTML !== employeeIcon) {
+                    avatarLayer.innerHTML = employeeIcon;
+                }
+            }
+
+            if (shouldCreate) {
+                profitLabel = document.createElement('div');
             profitLabel.className = 'profit-amount-label';
             profitLabel.id = `profit-amount-${buildingType}`;
             profitLabel.innerHTML = '0 <img src="assets/svg/money-icon.svg" style="width:16px;height:16px;vertical-align:middle;margin-left:2px;" alt="money">';
-            
-            // Для завода меняем порядок: сначала метка прибыли (сверху), потом круг (снизу)
-            if (buildingType === 'factory') {
-                indicator.appendChild(profitLabel);
-                indicator.appendChild(circleWrapper);
-                // Меняем направление flex для завода, чтобы метка была выше круга
-                indicator.style.display = 'flex';
-                indicator.style.flexDirection = 'column-reverse';
-                indicator.style.alignItems = 'center';
-            } else {
-                indicator.appendChild(circleWrapper);
-                indicator.appendChild(profitLabel);
-            }
-            
-            // Добавляем обработчик клика на круг для сбора прибыли
-            circleWrapper.addEventListener('click', () => {
+            indicator.appendChild(circleWrapper);
+            indicator.appendChild(profitLabel);
+                circleWrapper.addEventListener('click', event => {
+                    event.stopPropagation();
+                    event.preventDefault();
                 const accumulatedProfit = calculateAccumulatedProfit(buildingType);
                 if (accumulatedProfit > 0) {
                     const playerMoney = getPlayerMoney();
-                    // Забираем накопленную прибыль
                     setPlayerMoney(playerMoney + accumulatedProfit);
-                    
-                    // Сбрасываем накопленную прибыль
                     building.accumulatedProfit = 0;
                     building.lastCollectTime = Date.now();
-                    
-                    // Сохраняем данные
                     saveBuildingsData();
-                    
-                    // Обновляем индикаторы
-                    updateProfitIndicators();
-                }
-            });
-            
-            // Позиционируем индикатор по центру сверху здания (или снизу для factory)
-            indicator.style.position = 'fixed';
-            // Высота индикатора: круг (48px) + метка прибыли (~20px)
-            const indicatorHeight = 48 + 20; // круг + метка
-            // Центрируем по горизонтали: центр здания минус половина ширины индикатора, затем смещаем влево
-            const indicatorWidth = 48; // ширина круга
-            const centerX = zoneRect.left + (zoneRect.width / 2);
-            let leftOffset = -50; // смещение влево от центра
-            // Для почты (storage) смещаем на 5px правее
-            if (buildingType === 'storage') {
-                leftOffset += 5;
-            }
-            indicator.style.left = (centerX - indicatorWidth / 2 + leftOffset - 10) + 'px';
-            
-            // Для завода размещаем снизу здания, для остальных - сверху
-            if (buildingType === 'factory') {
-                // Размещаем под зданием
-                const topOffset = 30; // отступ от низа здания (сдвинуто вниз на 10px)
-                indicator.style.top = (zoneRect.bottom + topOffset) + 'px';
-            } else {
-                // Размещаем над зданием, но ниже (уменьшаем отступ от верха)
-                const topOffset = 20; // отступ от верха здания (опускаем ниже)
-                indicator.style.top = (zoneRect.top - indicatorHeight + topOffset) + 'px';
-            }
-            indicator.style.zIndex = '1000';
-            
+                    const label = profitLabel;
+                    if (label) {
+                        label.innerHTML = '0 <img src="assets/svg/money-icon.svg" style="width:16px;height:16px;vertical-align:middle;margin-left:2px;" alt="money">';
+                    }
+                    const state = window._profitRingState ? window._profitRingState[buildingType] : null;
+                    if (state) {
+                        state.profitLabelEl = label || state.profitLabelEl;
+                        state.start = performance.now();
+                    }
+                    }
+                });
             document.body.appendChild(indicator);
-
-            // Регистрируем состояние анимации для этого круга
             window._profitRingState[buildingType] = {
                 el: indicator,
                 progressEl: progressLayer,
                 profitLabelEl: profitLabel,
+                    avatarLayer: avatarLayer,
                 color: ringColor,
                 duration: RING_DURATIONS_MS[buildingType] || 1000,
                 start: performance.now()
             };
+            } else {
+                profitLabel = existingState.profitLabelEl;
+                if (!document.body.contains(indicator)) {
+                    document.body.appendChild(indicator);
+                }
+                existingState.progressEl = progressLayer;
+                existingState.avatarLayer = avatarLayer;
+                existingState.profitLabelEl = profitLabel;
+                existingState.color = ringColor;
+                existingState.duration = RING_DURATIONS_MS[buildingType] || existingState.duration;
+            }
+
+            indicator.style.position = 'fixed';
+            positionProfitIndicator(indicator, zoneRect, buildingType);
+            indicator.style.zIndex = '1000';
         });
         
         // Показываем индикаторы после обновления
@@ -734,32 +750,7 @@
                 }
             }
             
-            // Мгновенно обновляем позицию без анимации
-            indicator.style.transition = 'none';
-            // Высота индикатора: круг (48px) + метка прибыли (~20px)
-            const indicatorHeight = 48 + 20; // круг + метка
-            // Центрируем по горизонтали: центр здания минус половина ширины индикатора, затем смещаем влево
-            const indicatorWidth = 48; // ширина круга
-            const centerX = zoneRect.left + (zoneRect.width / 2);
-            let leftOffset = -50; // смещение влево от центра
-            // Для почты (storage) смещаем на 5px правее
-            if (buildingType === 'storage') {
-                leftOffset += 5;
-            }
-            indicator.style.left = (centerX - indicatorWidth / 2 + leftOffset - 10) + 'px';
-            
-            // Для завода размещаем снизу здания, для остальных - сверху
-            if (buildingType === 'factory') {
-                // Размещаем под зданием
-                const topOffset = 30; // отступ от низа здания (сдвинуто вниз на 10px)
-                indicator.style.top = (zoneRect.bottom + topOffset) + 'px';
-            } else {
-                // Размещаем над зданием, но ниже (уменьшаем отступ от верха)
-                const topOffset = 20; // отступ от верха здания (опускаем ниже)
-                indicator.style.top = (zoneRect.top - indicatorHeight + topOffset) + 'px';
-            }
-            // Убираем right, так как теперь используем left
-            indicator.style.right = 'auto';
+            positionProfitIndicator(indicator, zoneRect, buildingType);
         });
     }
     
@@ -768,7 +759,7 @@
         indicators.forEach(indicator => {
             indicator.style.opacity = '0';
             indicator.style.transform = 'scale(0.8)';
-            indicator.style.transition = 'all 0.2s ease';
+            indicator.style.transition = INDICATOR_TRANSITION;
         });
     }
     
@@ -780,7 +771,7 @@
         indicators.forEach(indicator => {
             indicator.style.opacity = '1';
             indicator.style.transform = 'scale(1)';
-            indicator.style.transition = 'all 0.3s ease';
+            indicator.style.transition = INDICATOR_TRANSITION;
         });
     }
     
