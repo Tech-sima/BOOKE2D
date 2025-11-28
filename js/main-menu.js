@@ -558,9 +558,18 @@
             profitLabel.id = `profit-amount-${buildingType}`;
             profitLabel.innerHTML = '0 <img src="assets/svg/money-icon.svg" style="width:16px;height:16px;vertical-align:middle;margin-left:2px;" alt="money">';
             
-            // Порядок элементов: сначала круг, потом метка прибыли
-            indicator.appendChild(circleWrapper);
-            indicator.appendChild(profitLabel);
+            // Для завода меняем порядок: сначала метка прибыли (сверху), потом круг (снизу)
+            if (buildingType === 'factory') {
+                indicator.appendChild(profitLabel);
+                indicator.appendChild(circleWrapper);
+                // Меняем направление flex для завода, чтобы метка была выше круга
+                indicator.style.display = 'flex';
+                indicator.style.flexDirection = 'column-reverse';
+                indicator.style.alignItems = 'center';
+            } else {
+                indicator.appendChild(circleWrapper);
+                indicator.appendChild(profitLabel);
+            }
             
             // Добавляем обработчик клика на круг для сбора прибыли
             circleWrapper.addEventListener('click', () => {
@@ -596,10 +605,16 @@
             }
             indicator.style.left = (centerX - indicatorWidth / 2 + leftOffset - 10) + 'px';
             
-            // Центрируем по вертикали: размещаем над центром здания для статичности
-            const centerY = zoneRect.top + (zoneRect.height / 2);
-            const topOffset = 20; // отступ от центра здания
-            indicator.style.top = (centerY - indicatorHeight / 2 - topOffset) + 'px';
+            // Для завода размещаем снизу здания, для остальных - сверху
+            if (buildingType === 'factory') {
+                // Размещаем под зданием
+                const topOffset = 30; // отступ от низа здания (сдвинуто вниз на 10px)
+                indicator.style.top = (zoneRect.bottom + topOffset) + 'px';
+            } else {
+                // Размещаем над зданием, но ниже (уменьшаем отступ от верха)
+                const topOffset = 20; // отступ от верха здания (опускаем ниже)
+                indicator.style.top = (zoneRect.top - indicatorHeight + topOffset) + 'px';
+            }
             indicator.style.zIndex = '1000';
             
             document.body.appendChild(indicator);
@@ -733,12 +748,16 @@
             }
             indicator.style.left = (centerX - indicatorWidth / 2 + leftOffset - 10) + 'px';
             
-            // Центрируем все индикаторы по центру зданий (включая завод) - удалена логика размещения снизу
-            // Размещаем над центром здания для всех зданий
-            const centerY = zoneRect.top + (zoneRect.height / 2);
-            const topOffset = 20; // отступ от центра здания
-            indicator.style.top = (centerY - indicatorHeight / 2 - topOffset) + 'px';
-            
+            // Для завода размещаем снизу здания, для остальных - сверху
+            if (buildingType === 'factory') {
+                // Размещаем под зданием
+                const topOffset = 30; // отступ от низа здания (сдвинуто вниз на 10px)
+                indicator.style.top = (zoneRect.bottom + topOffset) + 'px';
+            } else {
+                // Размещаем над зданием, но ниже (уменьшаем отступ от верха)
+                const topOffset = 20; // отступ от верха здания (опускаем ниже)
+                indicator.style.top = (zoneRect.top - indicatorHeight + topOffset) + 'px';
+            }
             // Убираем right, так как теперь используем left
             indicator.style.right = 'auto';
         });

@@ -392,7 +392,8 @@ const bookeTasks = [
     }
 ];
 
-// Старые круги завода полностью удалены - используются новые индикаторы прибыли (profit-indicator)
+// placeholders to избежать ReferenceError до их создания позже
+let factoryProgressDiv, factoryBankDiv;
 
 // === ПЕРЕМЕННЫЕ ПЛАТФОРМ УДАЛЕНЫ ===
 // Переменные платформ больше не нужны, так как используется новое главное меню с PNG
@@ -648,8 +649,21 @@ function initializeCirclePositions() {
         incomeBank.style.top  = (sy-160)+'px'; // ещё выше над прогрессом
     }
 
-    // Старые круги завода удалены - используются новые индикаторы прибыли (profit-indicator)
-    // Позиционирование завода теперь управляется через updateProfitIndicatorsPositions() в main-menu.js
+    // Позиционируем кружки над заводом (центрируем по центру здания)
+    const factoryObjRef = scene.getObjectByName('factory');
+    if(factoryObjRef && factoryProgressDiv && factoryBankDiv){
+        // позиция центра завода
+        const center2=factoryObjRef.position.clone();
+        center2.project(camera);
+        let sx2=(center2.x*0.5+0.5)*window.innerWidth;
+        let sy2=(-center2.y*0.5+0.5)*window.innerHeight;
+
+        // Центрируем круг (ширина 70px => радиус 35px)
+        factoryProgressDiv.style.left=(sx2-35)+'px';
+        factoryProgressDiv.style.top =(sy2-85)+'px'; // над центром завода
+        factoryBankDiv.style.left=(sx2-35)+'px';
+        factoryBankDiv.style.top =(sy2-160)+'px'; // ещё выше над прогрессом
+    }
 
     // Позиционируем кружок над хранилищем (центрируем по центру здания)
     const storObj = scene.getObjectByName('storage');
@@ -1002,7 +1016,15 @@ function fitCameraToScene() {
     camera.updateProjectionMatrix();
 }
 
-// Старые круги завода полностью удалены - используются новые индикаторы прибыли (profit-indicator)
+// === PLACEHOLDER UI FOR FACTORY CIRCLES (needed before animate starts)
+factoryProgressDiv=document.createElement('div');
+factoryProgressDiv.id='factory-income-progress';
+factoryProgressDiv.style.cssText='position:absolute;width:70px;height:70px;border-radius:50%;background:conic-gradient(#2196f3 0deg, transparent 0deg);display:none;pointer-events:none;z-index:1;visibility:hidden;';
+document.body.appendChild(factoryProgressDiv);
+factoryBankDiv=document.createElement('div');
+factoryBankDiv.id='factory-income-bank';
+factoryBankDiv.style.cssText='position:absolute;width:70px;height:70px;border-radius:50%;background:#004ba0;display:none;align-items:center;justify-content:center;color:#fff;font-weight:bold;z-index:1;cursor:pointer;';
+document.body.appendChild(factoryBankDiv);
 // Запуск игры откладываем до нажатия "Начать"
 function startGame(){
     try{
@@ -1597,7 +1619,14 @@ safeAddEventListener('btn-build-statue', 'click', () => {
 // === FACTORY BUILDING ===
 let factoryObj=null;
 let factoryProgress=0;
-// Старые круги завода полностью удалены - используются новые индикаторы прибыли (profit-indicator)
+factoryProgressDiv=document.createElement('div');
+factoryProgressDiv.id='factory-income-progress';
+factoryProgressDiv.style.cssText='position:absolute;width:70px;height:70px;border-radius:50%;background:conic-gradient(#2196f3 0deg, transparent 0deg);display:none;pointer-events:none;z-index:1;visibility:hidden;';
+document.body.appendChild(factoryProgressDiv);
+factoryBankDiv=document.createElement('div');
+factoryBankDiv.id='factory-income-bank';
+factoryBankDiv.style.cssText='position:absolute;width:70px;height:70px;border-radius:50%;background:#004ba0;display:none;align-items:center;justify-content:center;color:#fff;font-weight:bold;z-index:1;cursor:pointer;';
+document.body.appendChild(factoryBankDiv);
 
 let factoryIntermediate=0;
 let factoryUpgrades=0; // future
@@ -1608,7 +1637,7 @@ const factoryRateGrowth=1.15;
 // storage load
 factoryUpgrades=parseInt(localStorage.getItem('f_upCnt')||'0');
 factoryIntermediate=parseFloat(localStorage.getItem('f_interBal')||'0');
-// Обновление старых кругов завода удалено - используется profit-indicator
+factoryBankDiv.textContent=formatNumber(factoryIntermediate);
 
 function getFactoryIncomePerSecond(){
     if(factoryUpgrades===0) return 0;
@@ -1721,8 +1750,9 @@ function createFactory(){
     factoryObj.position.set(18,3,0); // поднят на половину высоты
     scene.add(factoryObj);
 
-    // Старые круги завода полностью удалены - используются новые индикаторы прибыли (profit-indicator)
-    // Позиционирование завода управляется через updateProfitIndicatorsPositions() в main-menu.js
+    // show DOM elements
+    factoryProgressDiv.style.display='flex';
+    factoryBankDiv.style.display='flex';
 
     // click handler
     window.addEventListener('pointerdown',(e)=>{
@@ -1736,7 +1766,13 @@ function createFactory(){
         if(ints.length>0){fPanel.style.display='block';fRefreshCost();fUpdateLevelIncome();}
     });
 
-    // Старые круги завода полностью удалены - используются новые индикаторы прибыли (profit-indicator)
+    // после appendChild(factoryProgressDiv)
+    const factoryInner=document.createElement('div');
+    factoryInner.style.cssText='position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);width:60px;height:60px;border-radius:50%;background:#2b2b2b;pointer-events:none;';
+    factoryProgressDiv.appendChild(factoryInner);
+    
+    // Позиционируем круги после создания завода
+    setTimeout(initializeCirclePositions, 100);
 }
 
 // recreate if built earlier
@@ -1756,13 +1792,17 @@ setInterval(()=>{
             const inc=getFactoryIncomePerSecond()*3;
             factoryIntermediate+=inc;
             window.factoryIntermediate = factoryIntermediate; // обновляем глобальную переменную
-            // Обновление старых кругов завода удалено - используется profit-indicator
+            factoryBankDiv.textContent=formatNumber(factoryIntermediate);
         }
-        // Обновление прогресса старых кругов завода удалено - используется profit-indicator
+        // update circle deg
+        const deg = factoryUpgrades===0 ? 0 : (factoryProgress/180)*360;
+        factoryProgressDiv.style.visibility='visible';
+        factoryProgressDiv.style.background=circleBG('factory',deg,EMP_COLORS.default);
     }
 },1000/60);
 
-// Сбор денег завода теперь через profit-indicator (обработчик в main-menu.js)
+// collect factory money
+factoryBankDiv.onclick=()=>{if(factoryIntermediate>0){setBalance(getBalance()+factoryIntermediate);factoryIntermediate=0;window.factoryIntermediate=0;factoryBankDiv.textContent='0';fRefreshCost();}};
 
 // === OFFLINE INCOME — удалено ===
 
@@ -1810,7 +1850,7 @@ if(phonePanel){
 
     // открытие/закрытие телефона
     function toggleCircles(show){
-        const list=[incomeProgress,incomeBank,storageProgressDiv]; // Старые круги завода удалены
+        const list=[incomeProgress,incomeBank,factoryProgressDiv,factoryBankDiv,storageProgressDiv];
         list.forEach(el=>{el.style.visibility=show?'visible':'hidden';});
     }
 
@@ -2643,7 +2683,7 @@ window.collectFactoryMoney = function() {
     if (factoryIntermediate > 0) {
         setBalance(getBalance() + factoryIntermediate);
         factoryIntermediate = 0;
-        // Обновление текста старых кругов удалено - используется profit-indicator
+        factoryBankDiv.textContent = formatNumber(factoryIntermediate);
         return true;
     }
     return false;
