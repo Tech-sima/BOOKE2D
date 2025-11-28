@@ -32,10 +32,18 @@ let mapUIInitialized = false;
         infoPanel.dataset.building = building;
         updateInfoPanel(building);
         
-        // Скрываем главное меню
+        // НЕ скрываем карту полностью на мобильных - это вызывает проблемы
+        // Вместо этого используем z-index для наложения панели поверх карты
         const mapContainer = document.getElementById('map-container');
         if (mapContainer) {
-            mapContainer.style.display = 'none';
+            // На мобильных не скрываем карту, только уменьшаем её z-index
+            const isMobile = window.innerWidth < 768;
+            if (!isMobile) {
+                mapContainer.style.display = 'none';
+            } else {
+                // На мобильных оставляем карту видимой, но за панелью
+                mapContainer.style.zIndex = '5';
+            }
         }
     }
 
@@ -44,10 +52,14 @@ let mapUIInitialized = false;
         btnShowAll.style.display='none';
         infoPanel.style.display='none';
         
-        // Показываем главное меню
+        // Восстанавливаем главное меню
         const mapContainer = document.getElementById('map-container');
         if (mapContainer) {
             mapContainer.style.display = 'block';
+            mapContainer.style.zIndex = '15'; // Восстанавливаем исходный z-index
+            // Убеждаемся, что карта видима
+            mapContainer.style.visibility = 'visible';
+            mapContainer.style.opacity = '1';
         }
         
         // Останавливаем автоматическое обновление панели

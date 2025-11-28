@@ -28,7 +28,7 @@
     stage.style.position = 'absolute';
     stage.style.inset = '0';
     stage.style.overflow = 'hidden';
-    stage.style.zIndex = '1';
+    stage.style.zIndex = '2'; // Синхронизируем с HTML (было 1, должно быть 2)
     stage.style.background = 'transparent';
     stage.style.pointerEvents = 'auto';
     stage.style.touchAction = 'none'; // Отключаем нативный скролл/зум
@@ -520,24 +520,71 @@
     
     // КРИТИЧЕСКИ ВАЖНО: защита от скрытия карты на мобильных устройствах
     var ensureMapVisible = function(){
-        if(content && (content.style.opacity !== '1' || content.style.visibility !== 'visible' || content.style.display === 'none')){
-            content.style.opacity = '1';
-            content.style.visibility = 'visible';
-            content.style.display = 'block';
+        // Проверяем и восстанавливаем видимость карты
+        if(content){
+            if(content.style.opacity !== '1' && content.style.opacity !== ''){
+                content.style.opacity = '1';
+            }
+            if(content.style.visibility === 'hidden'){
+                content.style.visibility = 'visible';
+            }
+            if(content.style.display === 'none'){
+                content.style.display = 'block';
+            }
         }
-        if(stage && (stage.style.opacity !== '1' || stage.style.visibility !== 'visible' || stage.style.display === 'none')){
-            stage.style.opacity = '1';
-            stage.style.visibility = 'visible';
-            stage.style.display = 'block';
+        if(stage){
+            if(stage.style.opacity !== '1' && stage.style.opacity !== ''){
+                stage.style.opacity = '1';
+            }
+            if(stage.style.visibility === 'hidden'){
+                stage.style.visibility = 'visible';
+            }
+            if(stage.style.display === 'none'){
+                stage.style.display = 'block';
+            }
+        }
+        // Также проверяем map-container
+        var mapContainer = document.getElementById('map-container');
+        if(mapContainer){
+            if(mapContainer.style.display === 'none'){
+                mapContainer.style.display = 'block';
+            }
+            if(mapContainer.style.visibility === 'hidden'){
+                mapContainer.style.visibility = 'visible';
+            }
+            if(mapContainer.style.opacity !== '1' && mapContainer.style.opacity !== ''){
+                mapContainer.style.opacity = '1';
+            }
         }
     };
     
-    // Периодически проверяем, что карта видна (только на мобильных устройствах)
-    if(/Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent)){
-        setInterval(ensureMapVisible, 200);
-        // Также проверяем при каждом touch событии
-        stage.addEventListener('touchstart', ensureMapVisible, { passive: true });
-        stage.addEventListener('touchmove', ensureMapVisible, { passive: true });
+    // Оптимизированная проверка видимости карты (только на мобильных устройствах)
+    var isMobileDevice = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
+    if(isMobileDevice){
+        // Менее частая проверка для снижения нагрузки (1000ms вместо 200ms)
+        var mapVisibilityInterval = setInterval(ensureMapVisible, 1000);
+        // Также проверяем при touch событиях (но не слишком часто)
+        var lastTouchCheck = 0;
+        var touchCheckHandler = function(){
+            var now = Date.now();
+            if(now - lastTouchCheck > 500){ // Не чаще раза в 500ms
+                ensureMapVisible();
+                lastTouchCheck = now;
+            }
+        };
+        stage.addEventListener('touchstart', touchCheckHandler, { passive: true });
+        
+        // Проверяем при изменении ориентации
+        window.addEventListener('orientationchange', function(){
+            setTimeout(ensureMapVisible, 100);
+        });
+        
+        // Проверяем при изменении размера окна
+        var resizeTimeout;
+        window.addEventListener('resize', function(){
+            clearTimeout(resizeTimeout);
+            resizeTimeout = setTimeout(ensureMapVisible, 200);
+        });
     }
 
     // Зум колесиком мыши для ПК (можно приближать и отдалять, но не меньше начального масштаба)

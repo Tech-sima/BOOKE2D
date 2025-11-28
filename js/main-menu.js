@@ -81,8 +81,13 @@
         setInterval(updateAllProfits, 30000);
         
         // Обработчик изменения размера окна для перепозиционирования индикаторов
+        // Оптимизированный обработчик resize с debounce для мобильных
+        let resizeTimeout;
         window.addEventListener('resize', () => {
-            setTimeout(updateProfitIndicators, 100);
+            clearTimeout(resizeTimeout);
+            resizeTimeout = setTimeout(() => {
+                updateProfitIndicators();
+            }, 200); // Debounce 200ms для снижения нагрузки на мобильных
         });
     }
     // Делаем функцию глобальной для вызова из карты
@@ -3166,20 +3171,25 @@
         container.addEventListener('pointercancel', onPointerUp, { passive: true });
 
         // Пересчет границ при изменении окна
+        // Оптимизированный обработчик resize с debounce для мобильных
+        let resizeTimeout;
         window.addEventListener('resize', () => {
-            computeBounds();
-            // пересчёт позиций кружков после изменения размеров
-            try { updateProfitIndicators(); showProfitIndicators(); } catch (_) {}
-            // Обновим направление стрелки
-            try {
-                const leftEdgeX = bounds.maxX;
+            clearTimeout(resizeTimeout);
+            resizeTimeout = setTimeout(() => {
+                computeBounds();
+                // пересчёт позиций кружков после изменения размеров
+                try { updateProfitIndicators(); showProfitIndicators(); } catch (_) {}
+                // Обновим направление стрелки
+                try {
+                    const leftEdgeX = bounds.maxX;
                 const epsilon = 2;
                 const isAtLeftNow = Math.abs(currentX - leftEdgeX) < epsilon;
                 if (leftArrow && leftArrow._setDirection) {
                     leftArrow._setDirection(isAtLeftNow ? 'right' : 'left');
                 }
             } catch (_) {}
-        }, { passive: true });
+            }, 200); // Debounce 200ms для снижения нагрузки на мобильных
+        });
     }
     
     function handleShowAllClick(event) {
