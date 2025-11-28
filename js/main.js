@@ -599,6 +599,9 @@ function onWindowResize() {
         adaptUIForTelegram();
     }
     
+    // Позиционируем круги после изменения размера окна
+    setTimeout(initializeCirclePositions, 100);
+    
     // Сбрасываем флаг изменения размера
     setTimeout(() => {
         resizeInProgress = false;
@@ -611,6 +614,74 @@ let intermediateBalance = parseFloat(localStorage.getItem('interBal')||'0');
 const costBase = 100;
 const rateGrowth = 1.15;
 const productionBase = 19.87;
+
+// HTML элементы для круга
+const incomeProgress = document.createElement('div');
+incomeProgress.id = 'income-progress';
+incomeProgress.style.cssText = 'position:absolute;width:70px;height:70px;border-radius:50%;background:conic-gradient(#4caf50 0deg, transparent 0deg);pointer-events:none;z-index:1;visibility:hidden;';
+document.body.appendChild(incomeProgress);
+
+// внутренний круг, чтобы оставалась только обводка
+const incomeInner=document.createElement('div');
+incomeInner.style.cssText='position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);width:60px;height:60px;border-radius:50%;background:#2b2b2b;pointer-events:none;';
+incomeProgress.appendChild(incomeInner);
+
+const incomeBank = document.createElement('div');
+incomeBank.id = 'income-bank';
+incomeBank.style.cssText = 'position:absolute;width:70px;height:70px;border-radius:50%;background:#8d0000;display:flex;align-items:center;justify-content:center;color:#fff;font-weight:bold;z-index:1;cursor:pointer;';
+document.body.appendChild(incomeBank);
+
+// Функция для начального позиционирования кругов
+function initializeCirclePositions() {
+    // Позиционируем кружки над библиотекой (центрируем по центру здания)
+    const cube = scene.getObjectByName('library');
+    if(cube){
+        // позиция центра куба
+        const centerWorld = cube.position.clone();
+        centerWorld.project(camera);
+        const sx = ( centerWorld.x * 0.5 + 0.5) * window.innerWidth;
+        const sy = ( -centerWorld.y * 0.5 + 0.5) * window.innerHeight;
+        // Центрируем круг (ширина 70px => радиус 35px)
+        incomeProgress.style.left = (sx-35)+'px';
+        incomeProgress.style.top  = (sy-85)+'px'; // над центром здания
+        incomeBank.style.left = (sx-35)+'px';
+        incomeBank.style.top  = (sy-160)+'px'; // ещё выше над прогрессом
+    }
+
+    // Старые круги завода удалены - используются новые индикаторы прибыли (profit-indicator)
+    // Позиционирование завода теперь управляется через updateProfitIndicatorsPositions() в main-menu.js
+
+    // Позиционируем кружок над хранилищем (центрируем по центру здания)
+    const storObj = scene.getObjectByName('storage');
+    if(storObj && storageProgressDiv && storageProgressDiv.style.display!=='none'){
+        // позиция центра хранилища
+        const center3=storObj.position.clone();
+        center3.project(camera);
+        const sx3=(center3.x*0.5+0.5)*window.innerWidth;
+        const sy3=(-center3.y*0.5+0.5)*window.innerHeight;
+        // Центрируем круг (ширина 70px => радиус 35px)
+        storageProgressDiv.style.left=(sx3-35)+'px';
+        storageProgressDiv.style.top =(sy3-85)+'px'; // над центром хранилища
+    }
+}
+
+// === STORAGE SALE PROGRESS CIRCLE ===
+const storageProgressDiv=document.createElement('div');
+storageProgressDiv.id='storage-sale-progress';
+storageProgressDiv.style.cssText='position:absolute;width:70px;height:70px;border-radius:50%;background:conic-gradient(#4caf50 0deg, transparent 0deg);display:none;pointer-events:none;z-index:1;visibility:hidden;';
+document.body.appendChild(storageProgressDiv);
+const storageInner=document.createElement('div');
+storageInner.style.cssText='position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);width:60px;height:60px;border-radius:50%;background:#2b2b2b;pointer-events:none;';
+storageProgressDiv.appendChild(storageInner);
+
+incomeBank.addEventListener('click', () => {
+    const newBal = getBalance()+intermediateBalance;
+    setBalance(newBal);
+    intermediateBalance = 0;
+    window.intermediateBalance = 0; // обновляем глобальную переменную
+    incomeBank.textContent = formatNumber(intermediateBalance);
+    refreshUpgradeCost();
+});
 
 function formatNumber(value){
     const units=['','K','M','B','T'];
@@ -645,16 +716,24 @@ function getNextUpgradeCost(){
 
 // Прогресс анимация
 let progress = 0;
-setInterval(() => {
+setInterval(()=>{
     progress += 1;
-    if (progress >= 60) {
+    if(progress>=60){
         progress = 0;
         // начисляем доход
         const inc = getIncomePerSecond();
         intermediateBalance += inc;
         window.intermediateBalance = intermediateBalance; // обновляем глобальную переменную
+        incomeBank.textContent = formatNumber(intermediateBalance);
     }
-}, 1000 / 60);
+},1000/60);
+
+function updateProgressVisual(){
+    // всегда показываем; при 0-уровне просто не заполняем ободок
+    incomeProgress.style.visibility='visible';
+    const deg = upgradesCount===0 ? 0 : progress * 6; // 60fps => 360deg
+    incomeProgress.style.background = `conic-gradient(#4caf50 ${deg}deg, transparent ${deg}deg)`;
+}
 
 // BALANCE helpers + persistence
 function getBalance(){return parseFloat(localStorage.getItem('balance')||'100');}
@@ -835,6 +914,7 @@ function animate() {
     animationRunning = true;
     
     requestAnimationFrame(animate);
+    updateProgressVisual();
 
     // Проверяем, открыты ли панели магазина, персонажей, города, заданий, профиля, друзей, настроек, статистики или телефона (используем глобальные переменные или DOM)
     const isShopOpen = window.isShopPanelOpen || (document.getElementById('shop-panel') && document.getElementById('shop-panel').style.display !== 'none');
@@ -854,6 +934,40 @@ function animate() {
         // Принудительно очищаем все индикаторы прибыли
         if (window.clearAllProfitIndicators) {
             window.clearAllProfitIndicators();
+        }
+    }
+
+    // позиционируем кружки над кубом (центрируем по центру здания)
+    const cube = scene.getObjectByName('library');
+    if(cube){
+        // позиция центра куба
+        const centerWorld = cube.position.clone();
+        centerWorld.project(camera);
+        const sx = ( centerWorld.x * 0.5 + 0.5) * window.innerWidth;
+        const sy = ( -centerWorld.y * 0.5 + 0.5) * window.innerHeight;
+        // Центрируем круг (ширина 70px => радиус 35px)
+        incomeProgress.style.left = (sx-35)+'px';
+        incomeProgress.style.top  = (sy-85)+'px'; // над центром здания
+        incomeBank.style.left = (sx-35)+'px';
+        incomeBank.style.top  = (sy-160)+'px'; // ещё выше над прогрессом
+    }
+
+    // позиционируем кружок над хранилищем (центрируем по центру здания)
+    const storObj = scene.getObjectByName('storage');
+    if(storObj && storageProgressDiv && storageProgressDiv.style.display!=='none'){
+        // позиция центра хранилища
+        const center3=storObj.position.clone();
+        center3.project(camera);
+        const sx3=(center3.x*0.5+0.5)*window.innerWidth;
+        const sy3=(-center3.y*0.5+0.5)*window.innerHeight;
+        // Центрируем круг (ширина 70px => радиус 35px)
+        storageProgressDiv.style.left=(sx3-35)+'px';
+        storageProgressDiv.style.top =(sy3-85)+'px'; // над центром хранилища
+        if(selling){
+            const elapsed=Date.now()-saleStartTime;
+            let deg=0;
+            if(saleDelayMs>0){deg=Math.min(360,(elapsed/saleDelayMs)*360);} 
+            storageProgressDiv.style.background=`conic-gradient(#4caf50 ${deg}deg, transparent ${deg}deg)`;
         }
     }
 
@@ -896,6 +1010,9 @@ function startGame(){
         if(!animationRunning){
             animate();
         }
+        // Позиционируем круги сразу после запуска игры
+        setTimeout(initializeCirclePositions, 200);
+        
         // Предзагружаем изображения панели города при запуске игры
         try {
             preloadCharacterImages();
@@ -1625,6 +1742,8 @@ function createFactory(){
 // recreate if built earlier
 if(localStorage.getItem('factoryBuilt')==='1'){
     createFactory();
+    // Позиционируем круги после создания завода
+    setTimeout(initializeCirclePositions, 100);
 }
 
 // income loop extension
@@ -1690,20 +1809,20 @@ if(phonePanel){
     }
 
     // открытие/закрытие телефона
+    function toggleCircles(show){
+        const list=[incomeProgress,incomeBank,storageProgressDiv]; // Старые круги завода удалены
+        list.forEach(el=>{el.style.visibility=show?'visible':'hidden';});
+    }
 
     safeAddEventListener('btn-phone', 'click', () => {
         showPanelWithAnimation('phone-panel');
         showHome();
-        if (window.hideProfitIndicators) {
-            window.hideProfitIndicators();
-        }
+        toggleCircles(false);
         setActiveSideButton('btn-phone');
     });
     safeAddEventListener('phone-close', 'click', () => {
         hidePanelWithAnimation('phone-panel', () => {
-            if (window.showProfitIndicators) {
-                window.showProfitIndicators();
-            }
+            toggleCircles(true);
             clearActiveSideButton();
             // Восстанавливаем индикаторы прибыли
             if (window.updateProfitIndicators) {
@@ -2139,6 +2258,10 @@ function createStorage(){
     stor.position.set(-18,3,0);
     scene.add(stor);
 
+    // show storage progress circle
+    storageProgressDiv.style.display='flex';
+    storageProgressDiv.style.visibility='visible';
+
     // click handler open panel
     window.addEventListener('pointerdown',(e)=>{
         // Блокируем клики если открыта любая панель
@@ -2151,10 +2274,14 @@ function createStorage(){
         if(ints.length>0){storagePanel.style.display='block';updateStorageUI();updateStorageUpgradeCost();}
     });
     
+    // Позиционируем круги после создания хранилища
+    setTimeout(initializeCirclePositions, 100);
 }
 // recreate storage if built earlier
 if(localStorage.getItem('storageBuilt')==='1') {
     createStorage();
+    // Позиционируем круги после создания хранилища
+    setTimeout(initializeCirclePositions, 100);
 }
 
 // DELIVERY UI modifications
@@ -2505,6 +2632,7 @@ window.collectLibraryMoney = function() {
         setBalance(getBalance() + intermediateBalance);
         intermediateBalance = 0;
         window.intermediateBalance = 0; // обновляем глобальную переменную
+        incomeBank.textContent = formatNumber(intermediateBalance);
         refreshUpgradeCost();
         return true;
     }
