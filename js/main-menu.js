@@ -400,8 +400,26 @@
         updateProfitIndicators();
     }
     
+    // Флаг для предотвращения множественных одновременных анимаций
+    let isMoneyAnimationRunning = false;
+    let activeAnimationContainers = [];
+    
     // Функция анимации полёта денег от круга к балансу
     function animateMoneyCollection(circleElement, amount) {
+        // Защита от множественных одновременных анимаций
+        if (isMoneyAnimationRunning) {
+            return;
+        }
+        isMoneyAnimationRunning = true;
+        
+        // Очищаем старые незавершённые анимации (защита от утечек памяти)
+        activeAnimationContainers.forEach(container => {
+            if (container && container.parentNode) {
+                container.remove();
+            }
+        });
+        activeAnimationContainers = [];
+        
         // Получаем позицию круга
         const circleRect = circleElement.getBoundingClientRect();
         const startX = circleRect.left + circleRect.width / 2;
@@ -489,6 +507,7 @@
         const animationContainer = document.createElement('div');
         animationContainer.style.cssText = 'position: fixed; top: 0; left: 0; width: 100%; height: 100%; pointer-events: none; z-index: 10000;';
         document.body.appendChild(animationContainer);
+        activeAnimationContainers.push(animationContainer);
         
         // Создаём и анимируем каждую иконку
         let completedCount = 0;
@@ -597,6 +616,15 @@
                                 if (animationContainer.parentNode) {
                                     animationContainer.remove();
                                 }
+                                // Удаляем из списка активных контейнеров
+                                const index = activeAnimationContainers.indexOf(animationContainer);
+                                if (index > -1) {
+                                    activeAnimationContainers.splice(index, 1);
+                                }
+                                // Сбрасываем флаг, если все анимации завершены
+                                if (activeAnimationContainers.length === 0) {
+                                    isMoneyAnimationRunning = false;
+                                }
                             }, 100);
                         }
                     }
@@ -607,10 +635,24 @@
         }
     }
     
+    // Флаг для предотвращения слишком частых обновлений индикаторов
+    let isUpdatingIndicators = false;
+    let lastIndicatorUpdate = 0;
+    const INDICATOR_UPDATE_COOLDOWN = 200; // 200ms минимальная задержка между обновлениями
+    
     // Функция создания и обновления индикаторов сотрудников
     function updateProfitIndicators() {
+        // Защита от слишком частых обновлений
+        const now = Date.now();
+        if (isUpdatingIndicators || (now - lastIndicatorUpdate < INDICATOR_UPDATE_COOLDOWN)) {
+            return;
+        }
+        isUpdatingIndicators = true;
+        lastIndicatorUpdate = now;
+        
         // Если индикаторы подавлены (после свайпа) — ничего не делаем
         if (window._mapState && window._mapState.indicatorsSuppressed) {
+            isUpdatingIndicators = false;
             return;
         }
         
@@ -780,7 +822,18 @@
             }
             
             // Добавляем обработчик клика на круг для сбора прибыли
+            // Защита от множественных кликов
+            let lastClickTime = 0;
+            const CLICK_COOLDOWN = 500; // 500ms задержка между кликами
+            
             circleWrapper.addEventListener('click', () => {
+                const currentTime = Date.now();
+                // Предотвращаем слишком частые клики
+                if (currentTime - lastClickTime < CLICK_COOLDOWN) {
+                    return;
+                }
+                lastClickTime = currentTime;
+                
                 const accumulatedProfit = calculateAccumulatedProfit(buildingType);
                 if (accumulatedProfit > 0) {
                     // Запускаем анимацию полёта денег
@@ -799,8 +852,10 @@
                     // Сохраняем данные
                     saveBuildingsData();
                     
-                    // Обновляем индикаторы
-                    updateProfitIndicators();
+                    // Обновляем индикаторы (с задержкой для оптимизации)
+                    setTimeout(() => {
+                        updateProfitIndicators();
+                    }, 100);
                 }
             });
             
@@ -845,8 +900,13 @@
         
         // Показываем индикаторы после обновления
         showProfitIndicators();
-        // Запускаем rAF-петлю для анимации, если не запущена
+        // Запускаем rAF-петлю для анимации, если не запущена (с защитой от утечек)
         if (!window._profitRingRAF) {
+            // Останавливаем старый цикл, если он существует
+            if (window._profitRingRAF) {
+                cancelAnimationFrame(window._profitRingRAF);
+            }
+            
             const animateRings = () => {
                 const state = window._profitRingState || {};
                 const now = performance.now();
@@ -899,6 +959,11 @@
                 fixBuildingIndicatorsForTelegram(70);
             }, 100);
         }
+        
+        // Сбрасываем флаг обновления (с небольшой задержкой для завершения операций)
+        setTimeout(() => {
+            isUpdatingIndicators = false;
+        }, 50);
     }
     
     // === ФУНКЦИИ УПРАВЛЕНИЯ ИНДИКАТОРАМИ ===
