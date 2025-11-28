@@ -48,6 +48,12 @@
     
     // Состояние для пинч-зума
     var pinchState = { active: false, initialDistance: 0, initialScale: 0 };
+    
+    // Оптимизация производительности: батчинг обновлений
+    var updateScheduled = false;
+    var pendingUpdate = false;
+    var rafId = null;
+    var isDragging = false;
 
     // Устанавливаем базовые размеры подложки
     bg.style.width = BASE_WIDTH + 'px';
@@ -106,56 +112,57 @@
         
         Object.keys(circleNodes).forEach(function(key){
             var circle = circleNodes[key];
-            // Проверяем существование круга и его родителя
-            if(!circle || !circle.parentNode) return;
+            if(!circle || !circle.parentNode || circle.style.display === 'none') return;
+            
+            // КРИТИЧЕСКИ ВАЖНО: проверяем, что круг в правильном контейнере
+            // Проверяем только если не во время драга (для производительности)
+            if(!isDragging && circle.parentNode !== circlesContainer){
+                // Принудительно перемещаем круг в правильный контейнер
+                var oldParent = circle.parentNode;
+                if(oldParent){
+                    oldParent.removeChild(circle);
+                }
+                circlesContainer.appendChild(circle);
+            }
+            
             var cfg = buildingsConfig[key];
             if(!cfg) return;
             
             // Вычисляем позицию круга на карте (правый верхний угол здания)
-            // Работает корректно даже с отрицательными координатами (например, для завода y = -425)
             var circleX = cfg.x + cfg.w - CIRCLE_SIZE - CIRCLE_OFFSET - 10;
             var circleY = cfg.y + CIRCLE_OFFSET;
             
             // Применяем трансформацию карты к координатам
-            // state.x и state.y - это смещение карты, state.scale - масштаб
-            // Формула: экранная_позиция = смещение_карты + координата_на_карте * масштаб
             var screenX = state.x + circleX * state.scale;
             var screenY = state.y + circleY * state.scale;
             
             // Проверяем, находится ли круг в видимой области (viewport)
-            // Скрываем круг, если он полностью за пределами viewport
-            // Используем небольшой отступ для более плавного появления/исчезновения
-            var margin = 10;
             var circleSize = CIRCLE_SIZE;
-            var isVisible = !(screenX + circleSize < -margin || 
-                             screenX > sw + margin || 
-                             screenY + circleSize < -margin || 
-                             screenY > sh + margin);
+            var isVisible = !(screenX + circleSize < 0 || 
+                             screenX > sw || 
+                             screenY + circleSize < 0 || 
+                             screenY > sh);
             
             // Устанавливаем позицию относительно stage (viewport)
-            // Используем прямое присваивание для синхронного обновления
             circle.style.left = screenX + 'px';
             circle.style.top = screenY + 'px';
-            // Круги остаются статичными - постоянный размер независимо от зума
             circle.style.width = CIRCLE_SIZE + 'px';
             circle.style.height = CIRCLE_SIZE + 'px';
-            
-            // Используем display для полного скрытия элемента (более надежно, чем visibility)
-            // Применяем ко всем кругам одинаково, включая завод
-            if(isVisible){
-                // Показываем круг только если он в видимой области
-                if(circle.style.display === 'none'){
-                    circle.style.display = '';
-                }
-            } else {
-                // Скрываем круг, если он за пределами viewport
-                circle.style.display = 'none';
-            }
+            circle.style.visibility = isVisible ? 'visible' : 'hidden';
         });
     }
     
     function ensureCircle(key){
-        if(circleNodes[key]) return circleNodes[key];
+        // Если круг уже существует, проверяем, что он в правильном контейнере
+        if(circleNodes[key]){
+            var existingCircle = circleNodes[key];
+            // Если круг не в circlesContainer, перемещаем его
+            if(existingCircle.parentNode && existingCircle.parentNode !== circlesContainer){
+                existingCircle.parentNode.removeChild(existingCircle);
+                circlesContainer.appendChild(existingCircle);
+            }
+            return existingCircle;
+        }
         var cfg = buildingsConfig[key];
         if(!cfg) return null;
         var circle = document.createElement('div');
@@ -169,13 +176,32 @@
         circle.style.zIndex = '1';
         circle.style.display = '';
         // Оптимизация для плавного обновления
-        circle.style.willChange = 'transform';
+        circle.style.willChange = 'left, top'; // Используем left/top, а не transform
         circle.style.backfaceVisibility = 'hidden';
         // Добавляем в контейнер статичных кругов, а не в buildingsRoot
+        // ВАЖНО: все круги должны быть в circlesContainer, чтобы быть статичными
+        if(circle.parentNode && circle.parentNode !== circlesContainer){
+            // Если круг уже где-то есть, перемещаем его в правильный контейнер
+            circle.parentNode.removeChild(circle);
+        }
         circlesContainer.appendChild(circle);
         circleNodes[key] = circle;
-        // Обновляем позицию сразу после создания
-        updateCirclesPositions();
+        // Обновляем позицию сразу после создания (синхронно, чтобы круг сразу был виден)
+        // Используем прямое обновление, а не через requestAnimationFrame
+        var circleX = cfg.x + cfg.w - CIRCLE_SIZE - CIRCLE_OFFSET - 10;
+        var circleY = cfg.y + CIRCLE_OFFSET;
+        var screenX = state.x + circleX * state.scale;
+        var screenY = state.y + circleY * state.scale;
+        var sw = stage.clientWidth;
+        var sh = stage.clientHeight;
+        var circleSize = CIRCLE_SIZE;
+        var isVisible = !(screenX + circleSize < 0 || 
+                         screenX > sw || 
+                         screenY + circleSize < 0 || 
+                         screenY > sh);
+        circle.style.left = screenX + 'px';
+        circle.style.top = screenY + 'px';
+        circle.style.visibility = isVisible ? 'visible' : 'hidden';
         return circle;
     }
 
@@ -184,9 +210,36 @@
             buildingNodes[key].style.display = '';
             var circle = ensureCircle(key);
             if(circle){
+                // КРИТИЧЕСКИ ВАЖНО: проверяем, что круг в правильном контейнере
+                // Если круг находится в buildingsRoot (внутри transform), он будет двигаться вместе с картой
+                if(circle.parentNode !== circlesContainer){
+                    // Принудительно перемещаем круг в правильный контейнер
+                    var oldParent = circle.parentNode;
+                    if(oldParent){
+                        oldParent.removeChild(circle);
+                    }
+                    circlesContainer.appendChild(circle);
+                }
+                
                 circle.style.display = '';
-                // Обновляем позицию круга после отображения
-                updateCirclesPositions();
+                // Обновляем позицию круга после отображения (синхронно)
+                var cfg = buildingsConfig[key];
+                if(cfg){
+                    var circleX = cfg.x + cfg.w - CIRCLE_SIZE - CIRCLE_OFFSET - 10;
+                    var circleY = cfg.y + CIRCLE_OFFSET;
+                    var screenX = state.x + circleX * state.scale;
+                    var screenY = state.y + circleY * state.scale;
+                    var sw = stage.clientWidth;
+                    var sh = stage.clientHeight;
+                    var circleSize = CIRCLE_SIZE;
+                    var isVisible = !(screenX + circleSize < 0 || 
+                                     screenX > sw || 
+                                     screenY + circleSize < 0 || 
+                                     screenY > sh);
+                    circle.style.left = screenX + 'px';
+                    circle.style.top = screenY + 'px';
+                    circle.style.visibility = isVisible ? 'visible' : 'hidden';
+                }
             }
             // Клик по зданию открывает соответствующую панель
             buildingNodes[key].style.cursor = 'pointer';
@@ -250,15 +303,34 @@
     }
     function applyTransform(){
         clampPan();
-        // Применяем трансформацию синхронно для мгновенного обновления
+        // Применяем трансформацию синхронно для мгновенного обновления карты
+        // Используем translate3d для аппаратного ускорения
         content.style.transform = 'translate3d('+state.x+'px,'+state.y+'px,0) scale('+state.scale+')';
-        // Обновляем позиции статичных кругов
-        updateCirclesPositions();
-        // Синхронно обновляем только позиции существующих индикаторов (быстро, без пересоздания)
-        if(typeof window.updateProfitIndicatorsPositions === 'function'){
-            // Вызываем синхронно для мгновенного обновления позиций без задержки
-            window.updateProfitIndicatorsPositions();
+        
+        // Батчинг обновлений кругов для улучшения производительности
+        // Обновляем круги через requestAnimationFrame, чтобы не блокировать основной поток
+        pendingUpdate = true;
+        if(!updateScheduled){
+            updateScheduled = true;
+            requestAnimationFrame(function(){
+                updateScheduled = false;
+                if(pendingUpdate){
+                    pendingUpdate = false;
+                    // Обновляем позиции статичных кругов
+                    updateCirclesPositions();
+                    // Обновляем индикаторы прибыли
+                    if(typeof window.updateProfitIndicatorsPositions === 'function'){
+                        window.updateProfitIndicatorsPositions();
+                    }
+                }
+            });
         }
+    }
+    
+    // Оптимизированная функция для быстрого обновления только карты (без кругов)
+    function applyTransformFast(){
+        clampPan();
+        content.style.transform = 'translate3d('+state.x+'px,'+state.y+'px,0) scale('+state.scale+')';
     }
 
     function fitToStage(){
@@ -313,6 +385,7 @@
             pinchState.centerY = center.y - rect.top;
         } else {
             state.dragging = true;
+            isDragging = true;
             state.lastX = e.clientX;
             state.lastY = e.clientY;
             state.vx = 0;
@@ -320,6 +393,15 @@
         }
         stage.setPointerCapture(e.pointerId);
     });
+    
+    // Функция для плавного обновления через requestAnimationFrame
+    function scheduleUpdate(){
+        if(rafId !== null) return; // Уже запланировано
+        rafId = requestAnimationFrame(function(){
+            rafId = null;
+            applyTransform();
+        });
+    }
     
     stage.addEventListener('pointermove', function(e){
         activePointers[e.pointerId] = { x: e.clientX, y: e.clientY };
@@ -348,7 +430,9 @@
             state.x = pinchState.centerX - mapX * newScale;
             state.y = pinchState.centerY - mapY * newScale;
             
-            applyTransform();
+            // Используем быстрое обновление для плавности
+            applyTransformFast();
+            scheduleUpdate();
             return;
         }
         
@@ -362,7 +446,10 @@
         state.y += dy;
         state.vx = 0;
         state.vy = 0;
-        applyTransform();
+        
+        // Используем быстрое обновление для плавности свайпа
+        applyTransformFast();
+        scheduleUpdate();
     });
     
     stage.addEventListener('pointerup', function(e){
@@ -372,6 +459,13 @@
         }
         if(Object.keys(activePointers).length === 0){
             state.dragging = false;
+            isDragging = false;
+            // Обновляем круги после окончания драга
+            if(rafId !== null){
+                cancelAnimationFrame(rafId);
+                rafId = null;
+            }
+            applyTransform();
         }
     });
     
@@ -382,6 +476,13 @@
         }
         if(Object.keys(activePointers).length === 0){
             state.dragging = false;
+            isDragging = false;
+            // Обновляем круги после окончания драга
+            if(rafId !== null){
+                cancelAnimationFrame(rafId);
+                rafId = null;
+            }
+            applyTransform();
         }
     });
     
@@ -420,7 +521,9 @@
         state.x = mouseX - mapX * newScale;
         state.y = mouseY - mapY * newScale;
         
-        applyTransform();
+        // Используем быстрое обновление для плавности зума
+        applyTransformFast();
+        scheduleUpdate();
     }, { passive: false });
 
     // Убрана кнопка быстрого свайпа
@@ -447,11 +550,31 @@
     window.zoomToLibrary = function(){ focusToKey('library'); };
     window.zoomToStorage = function(){ focusToKey('storage'); };
 
+    // Функция для проверки и исправления всех кругов
+    function fixAllCircles(){
+        Object.keys(circleNodes).forEach(function(key){
+            var circle = circleNodes[key];
+            if(!circle) return;
+            // Принудительно перемещаем все круги в правильный контейнер
+            if(circle.parentNode !== circlesContainer){
+                var oldParent = circle.parentNode;
+                if(oldParent){
+                    oldParent.removeChild(circle);
+                }
+                circlesContainer.appendChild(circle);
+            }
+        });
+        // Обновляем позиции после исправления
+        updateCirclesPositions();
+    }
+    
     window.addEventListener('resize', fitToStage);
     fitToStage();
     applyVisibility();
     // Библиотека — видна и кликабельна изначально
     setOwnedUI('library');
+    // Исправляем все круги после инициализации
+    setTimeout(fixAllCircles, 100);
 })();
 
 
