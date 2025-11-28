@@ -160,13 +160,14 @@
             
             // Проверяем, находится ли круг в видимой области (viewport)
             var circleSize = CIRCLE_SIZE;
-            var isVisible = !(screenX + circleSize < 0 || 
-                             screenX > sw || 
+            var actualX = screenX - 45; // Учитываем сдвиг влево
+            var isVisible = !(actualX + circleSize < 0 || 
+                             actualX > sw || 
                              screenY + circleSize < 0 || 
                              screenY > sh);
             
             // Устанавливаем позицию относительно stage (viewport)
-            circle.style.left = screenX + 'px';
+            circle.style.left = actualX + 'px';
             circle.style.top = screenY + 'px';
             circle.style.width = CIRCLE_SIZE + 'px';
             circle.style.height = CIRCLE_SIZE + 'px';
@@ -217,11 +218,12 @@
         var sw = stage.clientWidth;
         var sh = stage.clientHeight;
         var circleSize = CIRCLE_SIZE;
-        var isVisible = !(screenX + circleSize < 0 || 
-                         screenX > sw || 
+        var actualX = screenX - 45; // Учитываем сдвиг влево
+        var isVisible = !(actualX + circleSize < 0 || 
+                         actualX > sw || 
                          screenY + circleSize < 0 || 
                          screenY > sh);
-        circle.style.left = screenX + 'px';
+        circle.style.left = actualX + 'px';
         circle.style.top = screenY + 'px';
         circle.style.visibility = isVisible ? 'visible' : 'hidden';
         return circle;
@@ -254,11 +256,12 @@
                     var sw = stage.clientWidth;
                     var sh = stage.clientHeight;
                     var circleSize = CIRCLE_SIZE;
-                    var isVisible = !(screenX + circleSize < 0 || 
-                                     screenX > sw || 
+                    var actualX = screenX - 45; // Учитываем сдвиг влево
+                    var isVisible = !(actualX + circleSize < 0 || 
+                                     actualX > sw || 
                                      screenY + circleSize < 0 || 
                                      screenY > sh);
-                    circle.style.left = screenX + 'px';
+                    circle.style.left = actualX + 'px';
                     circle.style.top = screenY + 'px';
                     circle.style.visibility = isVisible ? 'visible' : 'hidden';
                 }

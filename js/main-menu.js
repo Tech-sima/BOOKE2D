@@ -399,6 +399,143 @@
         saveBuildingsData();
         updateProfitIndicators();
     }
+    
+    // Функция анимации полёта денег от круга к балансу
+    function animateMoneyCollection(circleElement, amount) {
+        // Получаем позицию круга
+        const circleRect = circleElement.getBoundingClientRect();
+        const startX = circleRect.left + circleRect.width / 2;
+        const startY = circleRect.top + circleRect.height / 2;
+        
+        // Получаем позицию иконки денег в панели баланса
+        const moneyPanel = document.getElementById('money-panel');
+        if (!moneyPanel) return;
+        
+        // Функция для получения позиции иконки (с задержкой для корректного рендеринга на мобильных)
+        const getTargetPosition = () => {
+            // Ищем иконку внутри панели (может быть <i> с классом fa-money или fa-solid.fa-money, или <img>)
+            let moneyIcon = moneyPanel.querySelector('i.fa-money') || 
+                           moneyPanel.querySelector('i.fa-solid.fa-money') ||
+                           moneyPanel.querySelector('i[class*="fa-money"]') ||
+                           moneyPanel.querySelector('img[src*="money"]');
+            
+            let endX, endY;
+            if (moneyIcon) {
+                const iconRect = moneyIcon.getBoundingClientRect();
+                endX = iconRect.left + iconRect.width / 2;
+                endY = iconRect.top + iconRect.height / 2;
+            } else {
+                // Fallback: используем начало панели (где обычно находится иконка)
+                const targetRect = moneyPanel.getBoundingClientRect();
+                // Иконка обычно находится слева в панели, учитываем отступы (адаптивно)
+                const isMobile = window.innerWidth < 768;
+                const iconOffset = isMobile ? 8 : 12; // Меньший отступ на мобильных
+                endX = targetRect.left + iconOffset;
+                endY = targetRect.top + targetRect.height / 2;
+            }
+            return { endX, endY };
+        };
+        
+        // Получаем целевую позицию (с небольшой задержкой для мобильных устройств)
+        const { endX, endY } = getTargetPosition();
+        
+        // Количество денежных иконок зависит от суммы (минимум 3, максимум 15)
+        const iconCount = Math.min(Math.max(Math.floor(amount / 100), 3), 15);
+        
+        // Адаптивный размер иконок для мобильных устройств
+        const isMobile = window.innerWidth < 768;
+        const iconSize = isMobile ? 20 : 24;
+        
+        // Создаём контейнер для анимации
+        const animationContainer = document.createElement('div');
+        animationContainer.style.cssText = 'position: fixed; top: 0; left: 0; width: 100%; height: 100%; pointer-events: none; z-index: 10000;';
+        document.body.appendChild(animationContainer);
+        
+        // Создаём и анимируем каждую иконку
+        let completedCount = 0;
+        for (let i = 0; i < iconCount; i++) {
+            const icon = document.createElement('img');
+            icon.src = 'assets/svg/money-icon.svg';
+            icon.style.cssText = `
+                position: absolute;
+                width: ${iconSize}px;
+                height: ${iconSize}px;
+                left: ${startX}px;
+                top: ${startY}px;
+                pointer-events: none;
+                z-index: 10001;
+                transition: none;
+            `;
+            animationContainer.appendChild(icon);
+            
+            // Случайное начальное смещение для эффекта разлёта
+            const angle = (Math.PI * 2 * i) / iconCount;
+            const spreadRadius = 30 + Math.random() * 20;
+            const offsetX = Math.cos(angle) * spreadRadius;
+            const offsetY = Math.sin(angle) * spreadRadius;
+            
+            // Анимация с использованием requestAnimationFrame для плавности
+            const duration = 1500 + Math.random() * 500; // 1500-2000ms (медленнее)
+            const startTime = performance.now();
+            
+            // Функция анимации
+            const animate = (currentTime) => {
+                const elapsed = currentTime - startTime;
+                const progress = Math.min(elapsed / duration, 1);
+                
+                // Пересчитываем позицию цели только в начале анимации (первые 10% прогресса) для адаптивности
+                let targetX = endX;
+                let targetY = endY;
+                if (progress < 0.1) {
+                    const currentTarget = getTargetPosition();
+                    targetX = currentTarget.endX;
+                    targetY = currentTarget.endY;
+                }
+                
+                // Easing функция (ease-out)
+                const easeOut = 1 - Math.pow(1 - progress, 3);
+                
+                // Промежуточная позиция с эффектом дуги
+                const midProgress = progress < 0.5 ? progress * 2 : 1;
+                const arcHeight = 50 * Math.sin(progress * Math.PI);
+                
+                const currentX = startX + offsetX * (1 - midProgress) + (targetX - startX) * easeOut;
+                const currentY = startY + offsetY * (1 - midProgress) + (targetY - startY) * easeOut - arcHeight;
+                
+                // Вращение и масштаб
+                const rotation = progress * 360;
+                const scale = 1 - progress * 0.3; // Уменьшаемся по мере движения
+                
+                icon.style.left = currentX + 'px';
+                icon.style.top = currentY + 'px';
+                icon.style.transform = `rotate(${rotation}deg) scale(${scale})`;
+                icon.style.opacity = 1 - progress * 0.5; // Постепенно исчезаем
+                
+                if (progress < 1) {
+                    requestAnimationFrame(animate);
+                } else {
+                    // Удаляем иконку после завершения анимации
+                    icon.remove();
+                    completedCount++;
+                    
+                    // Если все иконки завершили анимацию, удаляем контейнер
+                    if (completedCount === iconCount) {
+                        setTimeout(() => {
+                            if (animationContainer.parentNode) {
+                                animationContainer.remove();
+                            }
+                        }, 100);
+                    }
+                }
+            };
+            
+            // Запускаем анимацию с небольшой задержкой для эффекта каскада
+            setTimeout(() => {
+                requestAnimationFrame(animate);
+            }, i * 30); // Увеличена задержка для более плавного каскада
+        }
+    }
+    
     // Функция создания и обновления индикаторов сотрудников
     function updateProfitIndicators() {
         // Если индикаторы подавлены (после свайпа) — ничего не делаем
@@ -575,9 +712,14 @@
             circleWrapper.addEventListener('click', () => {
                 const accumulatedProfit = calculateAccumulatedProfit(buildingType);
                 if (accumulatedProfit > 0) {
+                    // Запускаем анимацию полёта денег
+                    animateMoneyCollection(circleWrapper, accumulatedProfit);
+                    
                     const playerMoney = getPlayerMoney();
-                    // Забираем накопленную прибыль
-                    setPlayerMoney(playerMoney + accumulatedProfit);
+                    // Забираем накопленную прибыль (с небольшой задержкой для визуального эффекта)
+                    setTimeout(() => {
+                        setPlayerMoney(playerMoney + accumulatedProfit);
+                    }, 400);
                     
                     // Сбрасываем накопленную прибыль
                     building.accumulatedProfit = 0;
