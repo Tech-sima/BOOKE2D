@@ -407,70 +407,70 @@
         const startX = circleRect.left + circleRect.width / 2;
         const startY = circleRect.top + circleRect.height / 2;
         
-        // Получаем позицию иконки денег в панели баланса
-        // Используем видимую панель info-panel вместо скрытой money-panel
-        let targetElement = document.getElementById('info-panel');
-        let moneyIcon = null;
-        
-        // Если info-panel найден, ищем внутри него элемент с балансом или иконку
-        if (targetElement) {
-            // Ищем иконку денег внутри info-panel
-            moneyIcon = targetElement.querySelector('img[src*="money"]') ||
-                       targetElement.querySelector('i.fa-solid.fa-money') ||
-                       targetElement.querySelector('i.fa-money') ||
-                       targetElement.querySelector('i[class*="money"]');
-            
-            // Если иконка не найдена, используем элемент с балансом (bc-value)
-            if (!moneyIcon) {
-                const bcValue = targetElement.querySelector('#bc-value');
-                if (bcValue) {
-                    moneyIcon = bcValue;
-                }
-            }
-        }
-        
-        // Fallback: пробуем найти money-panel (может быть видима в некоторых случаях)
-        if (!targetElement || !moneyIcon) {
-            targetElement = document.getElementById('money-panel');
-            if (targetElement) {
-                moneyIcon = targetElement.querySelector('i.fa-solid.fa-money') ||
-                           targetElement.querySelector('i.fa-money') ||
-                           targetElement.querySelector('i[class*="money"]') ||
-                           targetElement.querySelector('i');
-            }
-        }
-        
-        if (!targetElement) {
-            return;
-        }
-        
-        // Функция для получения позиции иконки денег (точная позиция)
+        // Получаем позицию SVG иконки денег в панели баланса
+        // Ищем точную SVG иконку bc-icon.svg внутри info-panel
         const getTargetPosition = () => {
             let endX, endY;
+            
+            // Сначала ищем info-panel
+            const infoPanel = document.getElementById('info-panel');
+            if (!infoPanel) {
+                // Fallback: пробуем money-panel
+                const moneyPanel = document.getElementById('money-panel');
+                if (moneyPanel) {
+                    const moneyIcon = moneyPanel.querySelector('i.fa-solid.fa-money') ||
+                                     moneyPanel.querySelector('i.fa-money') ||
+                                     moneyPanel.querySelector('i');
+                    if (moneyIcon) {
+                        const iconRect = moneyIcon.getBoundingClientRect();
+                        if (iconRect.width > 0 && iconRect.height > 0) {
+                            endX = iconRect.left + iconRect.width / 2;
+                            endY = iconRect.top + iconRect.height / 2;
+                            return { endX, endY };
+                        }
+                    }
+                }
+                return { endX: 0, endY: 0 };
+            }
+            
+            // Ищем SVG иконку bc-icon.svg внутри ячейки bc-bg
+            // Это точная иконка денег, в которую должны лететь деньги
+            let moneyIcon = infoPanel.querySelector('img[src*="bc-icon.svg"]') ||
+                           infoPanel.querySelector('.bc-bg img.info-icon') ||
+                           infoPanel.querySelector('.bc-bg img') ||
+                           infoPanel.querySelector('img[src*="money"]') ||
+                           infoPanel.querySelector('img.info-icon');
             
             if (moneyIcon) {
                 const iconRect = moneyIcon.getBoundingClientRect();
                 
-                // Проверяем, что элемент видима
+                // Проверяем, что иконка видима
                 if (iconRect.width > 0 && iconRect.height > 0) {
-                    // Точный центр иконки или элемента
+                    // ТОЧНЫЙ центр SVG иконки
                     endX = iconRect.left + iconRect.width / 2;
                     endY = iconRect.top + iconRect.height / 2;
-                } else {
-                    // Если элемент скрыт, используем позицию панели
-                    const panelRect = targetElement.getBoundingClientRect();
-                    const isMobile = window.innerWidth < 768;
-                    endX = panelRect.left + (isMobile ? 15 : 20);
-                    endY = panelRect.top + panelRect.height / 2;
+                    return { endX, endY };
                 }
-            } else {
-                // Fallback: используем позицию панели
-                const panelRect = targetElement.getBoundingClientRect();
-                const isMobile = window.innerWidth < 768;
-                // Иконка обычно находится слева в панели
-                endX = panelRect.left + (isMobile ? 15 : 20);
-                endY = panelRect.top + panelRect.height / 2;
             }
+            
+            // Fallback: если иконка не найдена, используем позицию ячейки bc-bg
+            const bcCell = infoPanel.querySelector('.bc-bg');
+            if (bcCell) {
+                const cellRect = bcCell.getBoundingClientRect();
+                // Иконка находится слева в ячейке, учитываем отступы
+                const isMobile = window.innerWidth < 768;
+                const iconSize = isMobile ? 20 : 24;
+                const padding = isMobile ? 14 : 14;
+                endX = cellRect.left + padding + iconSize / 2;
+                endY = cellRect.top + cellRect.height / 2;
+                return { endX, endY };
+            }
+            
+            // Последний fallback: позиция info-panel
+            const panelRect = infoPanel.getBoundingClientRect();
+            const isMobile = window.innerWidth < 768;
+            endX = panelRect.left + (isMobile ? 25 : 30);
+            endY = panelRect.top + (isMobile ? 70 : 70);
             
             return { endX, endY };
         };
