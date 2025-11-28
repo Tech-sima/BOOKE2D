@@ -2901,8 +2901,16 @@
         if (!container) return;
 
         // Делаем контейнер интерактивным для pointer событий (переопределяем CSS pointer-events:none)
+        // ВАЖНО: на мобильных убеждаемся, что карта всегда видима
+        const isMobile = window.innerWidth < 768;
         container.style.pointerEvents = 'auto';
         container.style.touchAction = 'none';
+        if(isMobile){
+            // На мобильных принудительно устанавливаем видимость
+            container.style.display = 'block';
+            container.style.visibility = 'visible';
+            container.style.opacity = '1';
+        }
 
         // Создаем панель для панорамирования, чтобы двигать и изображение, и зоны вместе
         let panLayer = document.getElementById('map-pan-layer');
