@@ -81,13 +81,8 @@
         setInterval(updateAllProfits, 30000);
         
         // Обработчик изменения размера окна для перепозиционирования индикаторов
-        // Оптимизированный обработчик resize с debounce для мобильных
-        let resizeTimeout;
         window.addEventListener('resize', () => {
-            clearTimeout(resizeTimeout);
-            resizeTimeout = setTimeout(() => {
-                updateProfitIndicators();
-            }, 200); // Debounce 200ms для снижения нагрузки на мобильных
+            setTimeout(updateProfitIndicators, 100);
         });
     }
     // Делаем функцию глобальной для вызова из карты
@@ -405,26 +400,35 @@
         updateProfitIndicators();
     }
     
-    // Флаг для предотвращения множественных одновременных анимаций
-    let isMoneyAnimationRunning = false;
-    let activeAnimationContainers = [];
+    // Защита от множественных одновременных анимаций
+    let activeMoneyAnimations = 0;
+    const MAX_CONCURRENT_ANIMATIONS = 2; // Максимум 2 одновременные анимации (уменьшено для мобильных)
+    const animationContainers = new Set(); // Отслеживание активных контейнеров
     
-    // Функция анимации полёта денег от круга к балансу
-    function animateMoneyCollection(circleElement, amount) {
-        // Защита от множественных одновременных анимаций
-        if (isMoneyAnimationRunning) {
-            return;
-        }
-        isMoneyAnimationRunning = true;
-        
-        // Очищаем старые незавершённые анимации (защита от утечек памяти)
-        activeAnimationContainers.forEach(container => {
+    // Функция очистки всех активных анимаций (для предотвращения утечек памяти)
+    function cleanupAllMoneyAnimations() {
+        animationContainers.forEach(container => {
             if (container && container.parentNode) {
                 container.remove();
             }
         });
-        activeAnimationContainers = [];
+        animationContainers.clear();
+        activeMoneyAnimations = 0;
+    }
+    
+    // Очистка при размонтировании или скрытии панелей
+    if (typeof window !== 'undefined') {
+        window.cleanupAllMoneyAnimations = cleanupAllMoneyAnimations;
+    }
+    
+    // Функция анимации полёта денег от круга к балансу
+    function animateMoneyCollection(circleElement, amount) {
+        // Защита от слишком частых вызовов
+        if (activeMoneyAnimations >= MAX_CONCURRENT_ANIMATIONS) {
+            return; // Пропускаем анимацию, если уже слишком много активных
+        }
         
+        activeMoneyAnimations++;
         // Получаем позицию круга
         const circleRect = circleElement.getBoundingClientRect();
         const startX = circleRect.left + circleRect.width / 2;
@@ -502,17 +506,28 @@
         const { endX, endY } = getTargetPosition();
         
         // Количество денежных иконок зависит от суммы (минимум 8, максимум 20 для более эффектного разлёта)
-        const iconCount = Math.min(Math.max(Math.floor(amount / 50), 8), 20);
+        // На мобильных уменьшаем количество для производительности
+        const isMobile = window.innerWidth < 768;
+        const baseIconCount = Math.min(Math.max(Math.floor(amount / 50), 8), 20);
+        const iconCount = isMobile ? Math.min(baseIconCount, 12) : baseIconCount; // На мобильных максимум 12
         
         // Адаптивный размер иконок для мобильных устройств (увеличенный размер)
-        const isMobile = window.innerWidth < 768;
-        const iconSize = isMobile ? 32 : 40; // Увеличенный размер для лучшей видимости
+        const iconSize = isMobile ? 28 : 40; // Немного уменьшен на мобильных для производительности
         
         // Создаём контейнер для анимации
         const animationContainer = document.createElement('div');
         animationContainer.style.cssText = 'position: fixed; top: 0; left: 0; width: 100%; height: 100%; pointer-events: none; z-index: 10000;';
         document.body.appendChild(animationContainer);
-        activeAnimationContainers.push(animationContainer);
+        animationContainers.add(animationContainer);
+        
+        // Ограничиваем время жизни контейнера (защита от утечек)
+        const containerTimeout = setTimeout(() => {
+            if (animationContainer.parentNode) {
+                animationContainer.remove();
+                animationContainers.delete(animationContainer);
+                activeMoneyAnimations = Math.max(0, activeMoneyAnimations - 1);
+            }
+        }, 5000); // Максимум 5 секунд
         
         // Создаём и анимируем каждую иконку
         let completedCount = 0;
@@ -558,11 +573,11 @@
                     const elapsed = currentTime - animationStart;
                     const progress = Math.min(elapsed / totalDuration, 1);
                 
-                // Пересчитываем позицию цели в начале анимации и периодически для адаптивности
+                // Пересчитываем позицию цели только в начале анимации (оптимизация для производительности)
                 let targetX = endX;
                 let targetY = endY;
-                // Пересчитываем в начале и в середине анимации для точности
-                if (progress < 0.2 || (progress > 0.3 && progress < 0.35)) {
+                // Пересчитываем только один раз в начале для экономии ресурсов
+                if (progress < 0.1) {
                     const currentTarget = getTargetPosition();
                     targetX = currentTarget.endX;
                     targetY = currentTarget.endY;
@@ -617,19 +632,13 @@
                         
                         // Если все иконки завершили анимацию, удаляем контейнер
                         if (completedCount === iconCount) {
+                            clearTimeout(containerTimeout);
                             setTimeout(() => {
                                 if (animationContainer.parentNode) {
                                     animationContainer.remove();
                                 }
-                                // Удаляем из списка активных контейнеров
-                                const index = activeAnimationContainers.indexOf(animationContainer);
-                                if (index > -1) {
-                                    activeAnimationContainers.splice(index, 1);
-                                }
-                                // Сбрасываем флаг, если все анимации завершены
-                                if (activeAnimationContainers.length === 0) {
-                                    isMoneyAnimationRunning = false;
-                                }
+                                animationContainers.delete(animationContainer);
+                                activeMoneyAnimations = Math.max(0, activeMoneyAnimations - 1);
                             }, 100);
                         }
                     }
@@ -640,24 +649,21 @@
         }
     }
     
-    // Флаг для предотвращения слишком частых обновлений индикаторов
-    let isUpdatingIndicators = false;
-    let lastIndicatorUpdate = 0;
-    const INDICATOR_UPDATE_COOLDOWN = 200; // 200ms минимальная задержка между обновлениями
+    // Оптимизация: throttling для updateProfitIndicators
+    let lastUpdateTime = 0;
+    const UPDATE_THROTTLE_MS = 100; // Максимум раз в 100ms
     
     // Функция создания и обновления индикаторов сотрудников
     function updateProfitIndicators() {
-        // Защита от слишком частых обновлений
-        const now = Date.now();
-        if (isUpdatingIndicators || (now - lastIndicatorUpdate < INDICATOR_UPDATE_COOLDOWN)) {
+        // Throttling для предотвращения слишком частых обновлений
+        const now = performance.now();
+        if (now - lastUpdateTime < UPDATE_THROTTLE_MS) {
             return;
         }
-        isUpdatingIndicators = true;
-        lastIndicatorUpdate = now;
+        lastUpdateTime = now;
         
         // Если индикаторы подавлены (после свайпа) — ничего не делаем
         if (window._mapState && window._mapState.indicatorsSuppressed) {
-            isUpdatingIndicators = false;
             return;
         }
         
@@ -827,18 +833,7 @@
             }
             
             // Добавляем обработчик клика на круг для сбора прибыли
-            // Защита от множественных кликов
-            let lastClickTime = 0;
-            const CLICK_COOLDOWN = 500; // 500ms задержка между кликами
-            
             circleWrapper.addEventListener('click', () => {
-                const currentTime = Date.now();
-                // Предотвращаем слишком частые клики
-                if (currentTime - lastClickTime < CLICK_COOLDOWN) {
-                    return;
-                }
-                lastClickTime = currentTime;
-                
                 const accumulatedProfit = calculateAccumulatedProfit(buildingType);
                 if (accumulatedProfit > 0) {
                     // Запускаем анимацию полёта денег
@@ -857,10 +852,8 @@
                     // Сохраняем данные
                     saveBuildingsData();
                     
-                    // Обновляем индикаторы (с задержкой для оптимизации)
-                    setTimeout(() => {
-                        updateProfitIndicators();
-                    }, 100);
+                    // Обновляем индикаторы
+                    updateProfitIndicators();
                 }
             });
             
@@ -907,11 +900,7 @@
         showProfitIndicators();
         // Запускаем rAF-петлю для анимации, если не запущена (с защитой от утечек)
         if (!window._profitRingRAF) {
-            // Останавливаем старый цикл, если он существует
-            if (window._profitRingRAF) {
-                cancelAnimationFrame(window._profitRingRAF);
-            }
-            
+            let lastFrameTime = performance.now();
             const animateRings = () => {
                 const state = window._profitRingState || {};
                 const now = performance.now();
@@ -964,11 +953,6 @@
                 fixBuildingIndicatorsForTelegram(70);
             }, 100);
         }
-        
-        // Сбрасываем флаг обновления (с небольшой задержкой для завершения операций)
-        setTimeout(() => {
-            isUpdatingIndicators = false;
-        }, 50);
     }
     
     // === ФУНКЦИИ УПРАВЛЕНИЯ ИНДИКАТОРАМИ ===
@@ -2901,16 +2885,8 @@
         if (!container) return;
 
         // Делаем контейнер интерактивным для pointer событий (переопределяем CSS pointer-events:none)
-        // ВАЖНО: на мобильных убеждаемся, что карта всегда видима
-        const isMobile = window.innerWidth < 768;
         container.style.pointerEvents = 'auto';
         container.style.touchAction = 'none';
-        if(isMobile){
-            // На мобильных принудительно устанавливаем видимость
-            container.style.display = 'block';
-            container.style.visibility = 'visible';
-            container.style.opacity = '1';
-        }
 
         // Создаем панель для панорамирования, чтобы двигать и изображение, и зоны вместе
         let panLayer = document.getElementById('map-pan-layer');
@@ -3179,25 +3155,20 @@
         container.addEventListener('pointercancel', onPointerUp, { passive: true });
 
         // Пересчет границ при изменении окна
-        // Оптимизированный обработчик resize с debounce для мобильных
-        let resizeTimeout;
         window.addEventListener('resize', () => {
-            clearTimeout(resizeTimeout);
-            resizeTimeout = setTimeout(() => {
-                computeBounds();
-                // пересчёт позиций кружков после изменения размеров
-                try { updateProfitIndicators(); showProfitIndicators(); } catch (_) {}
-                // Обновим направление стрелки
-                try {
-                    const leftEdgeX = bounds.maxX;
+            computeBounds();
+            // пересчёт позиций кружков после изменения размеров
+            try { updateProfitIndicators(); showProfitIndicators(); } catch (_) {}
+            // Обновим направление стрелки
+            try {
+                const leftEdgeX = bounds.maxX;
                 const epsilon = 2;
                 const isAtLeftNow = Math.abs(currentX - leftEdgeX) < epsilon;
                 if (leftArrow && leftArrow._setDirection) {
                     leftArrow._setDirection(isAtLeftNow ? 'right' : 'left');
                 }
             } catch (_) {}
-            }, 200); // Debounce 200ms для снижения нагрузки на мобильных
-        });
+        }, { passive: true });
     }
     
     function handleShowAllClick(event) {
