@@ -2922,10 +2922,11 @@
         let movedTotal = 0;
         let programScrollInProgress = false; // флаг программной анимации к краю
 
-        // Параметры
-        const sensitivity = 0.85; // ещё ниже чувствительность для мягкого контроля
-        const damping = 0.08; // медленнее для более плавного скольжения
-        const dragThreshold = 6; // пикселей для распознавания перетаскивания
+        // Параметры (оптимизированы для плавности)
+        const sensitivity = 0.9; // чувствительность свайпа
+        const damping = 0.12; // увеличен для более плавного скольжения (было 0.08)
+        const dragThreshold = 5; // пикселей для распознавания перетаскивания
+        const minMovement = 0.05; // минимальное движение для обновления (оптимизация)
 
         let bounds = { maxX: 0, maxY: 0 };
         const overscroll = 0; // запрещаем выход за края карты
@@ -3054,11 +3055,20 @@
 
         function animate() {
             if (!panLayer) return;
-            // Плавное приближение к целевому положению
-            const nx = currentX + (targetX - currentX) * damping;
-            const ny = currentY + (targetY - currentY) * damping;
-            // Только если сдвиг заметен — обновляем DOM
-            if (Math.abs(nx - currentX) > 0.1 || Math.abs(ny - currentY) > 0.1) {
+            
+            // Плавное приближение к целевому положению с улучшенным easing
+            const dx = targetX - currentX;
+            const dy = targetY - currentY;
+            const distance = Math.sqrt(dx * dx + dy * dy);
+            
+            // Адаптивный damping: чем ближе к цели, тем медленнее (для более плавной остановки)
+            const adaptiveDamping = distance > 10 ? damping : damping * 0.7;
+            
+            const nx = currentX + dx * adaptiveDamping;
+            const ny = currentY + dy * adaptiveDamping;
+            
+            // Только если сдвиг заметен — обновляем DOM (улучшенный порог)
+            if (Math.abs(dx) > minMovement || Math.abs(dy) > minMovement) {
                 currentX = nx;
                 currentY = ny;
                 applyTransform();
@@ -3068,17 +3078,21 @@
                         window.updateProfitIndicatorsPositions();
                     }
                 } catch (_) {}
-                // Во время перетаскивания индикаторы не двигаем
             } else {
-                currentX = targetX;
-                currentY = targetY;
-                applyTransform();
+                // Если достигли цели, точно устанавливаем позицию
+                if (Math.abs(dx) > 0.01 || Math.abs(dy) > 0.01) {
+                    currentX = targetX;
+                    currentY = targetY;
+                    applyTransform();
+                }
+                
                 // Если завершили программную прокрутку — показываем индикаторы
                 if (programScrollInProgress) {
                     programScrollInProgress = false;
                     try { updateProfitIndicators(); showProfitIndicators(); } catch (_) {}
                 }
             }
+            
             // Обновляем направление стрелки по текущему положению
             try {
                 computeBounds();

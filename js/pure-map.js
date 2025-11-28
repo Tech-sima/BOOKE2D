@@ -443,21 +443,26 @@
             var p2 = activePointers[pointerIds[1]];
             var currentDistance = getDistance(p1.x, p1.y, p2.x, p2.y);
             
-            // Вычисляем новый масштаб
+            // Вычисляем новый масштаб с плавным ограничением
             var scaleFactor = currentDistance / pinchState.initialDistance;
             var newScale = pinchState.initialScale * scaleFactor;
             // Ограничиваем минимальным масштабом (начальным) и максимальным
             var minAllowedScale = initialScale !== null ? initialScale : state.minScale;
             newScale = Math.max(minAllowedScale, Math.min(state.maxScale, newScale));
             
+            // Плавное применение зума (интерполяция для более плавного эффекта)
+            var smoothing = 0.15; // Коэффициент сглаживания
+            state.scale = state.scale + (newScale - state.scale) * smoothing;
+            
             // Вычисляем точку на карте под центром пинча
             var mapX = (pinchState.centerX - state.x) / state.scale;
             var mapY = (pinchState.centerY - state.y) / state.scale;
             
-            // Применяем зум
-            state.scale = newScale;
-            state.x = pinchState.centerX - mapX * newScale;
-            state.y = pinchState.centerY - mapY * newScale;
+            // Применяем зум с плавной интерполяцией позиции
+            var targetX = pinchState.centerX - mapX * state.scale;
+            var targetY = pinchState.centerY - mapY * state.scale;
+            state.x = state.x + (targetX - state.x) * smoothing;
+            state.y = state.y + (targetY - state.y) * smoothing;
             
             // Используем быстрое обновление для плавности
             applyTransformFast();
@@ -465,10 +470,12 @@
             return;
         }
         
-        // Обычное перетаскивание
+        // Обычное перетаскивание (улучшенная плавность)
         if(!state.dragging) return;
-        var dx = (e.clientX - state.lastX) * 1.5;
-        var dy = (e.clientY - state.lastY) * 1.5;
+        // Улучшенная чувствительность для более плавного движения
+        var sensitivity = 1.3; // немного увеличена для лучшей отзывчивости
+        var dx = (e.clientX - state.lastX) * sensitivity;
+        var dy = (e.clientY - state.lastY) * sensitivity;
         state.lastX = e.clientX;
         state.lastY = e.clientY;
         state.x += dx;
@@ -546,7 +553,7 @@
         if(state.dragging) return; // Не зумим во время перетаскивания
         
         var delta = e.deltaY;
-        var zoomFactor = 0.1; // Скорость зума
+        var zoomFactor = 0.08; // Уменьшена скорость зума для более плавного эффекта
         var zoomSensitivity = delta > 0 ? 1 - zoomFactor : 1 + zoomFactor; // Отдаление или приближение
         
         // Получаем позицию мыши относительно stage
@@ -558,18 +565,21 @@
         var mapX = (mouseX - state.x) / state.scale;
         var mapY = (mouseY - state.y) / state.scale;
         
-        // Применяем зум
-        var newScale = state.scale * zoomSensitivity;
+        // Применяем зум с плавной интерполяцией
+        var targetScale = state.scale * zoomSensitivity;
         // Ограничиваем минимальным масштабом (начальным) и максимальным
         var minAllowedScale = initialScale !== null ? initialScale : state.minScale;
-        newScale = Math.max(minAllowedScale, Math.min(state.maxScale, newScale));
+        targetScale = Math.max(minAllowedScale, Math.min(state.maxScale, targetScale));
         
         // Если уже на границе, не делаем ничего
-        if(newScale === state.scale) return;
+        if(targetScale === state.scale) return;
+        
+        // Плавная интерполяция зума для более плавного эффекта
+        var smoothing = 0.2; // Коэффициент сглаживания для зума колесиком
+        state.scale = state.scale + (targetScale - state.scale) * smoothing;
         
         // Вычисляем новую позицию, чтобы точка под курсором осталась на месте
-        state.scale = newScale;
-        state.x = mouseX - mapX * newScale;
+        state.x = mouseX - mapX * state.scale;
         state.y = mouseY - mapY * newScale;
         
         // Используем быстрое обновление для плавности зума
