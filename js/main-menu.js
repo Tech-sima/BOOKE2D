@@ -404,29 +404,17 @@
     const INDICATOR_HEIGHT = INDICATOR_WIDTH + 20;
     const INDICATOR_TOP_OFFSET = 20;
     const INDICATOR_LEFT_BASE_OFFSET = -70;
-    const FACTORY_BOTTOM_PADDING = 6;
     const INDICATOR_TRANSITION = 'opacity 0.3s ease, transform 0.3s ease';
 
     function positionProfitIndicator(indicator, zoneRect, buildingType) {
         if (!indicator || !zoneRect) return;
         const centerX = zoneRect.left + zoneRect.width / 2;
         let leftOffset = INDICATOR_LEFT_BASE_OFFSET;
-        if (buildingType === 'storage') {
-            leftOffset += 5;
-        }
         const leftValue = centerX - INDICATOR_WIDTH / 2 + leftOffset - 10;
-        let topValue;
-        if (buildingType === 'factory') {
-            topValue = zoneRect.bottom - INDICATOR_HEIGHT - FACTORY_BOTTOM_PADDING;
-            if (topValue < 0) {
-                topValue = 0;
-            }
-        } else {
-            const centerY = zoneRect.top + zoneRect.height / 2;
-            topValue = centerY - INDICATOR_HEIGHT / 2 - INDICATOR_TOP_OFFSET;
-        }
+        const centerY = zoneRect.top + zoneRect.height / 2;
+        const topValue = centerY - INDICATOR_HEIGHT / 2 - INDICATOR_TOP_OFFSET;
         indicator.style.right = 'auto';
-        indicator.dataset.positionAnchor = buildingType === 'factory' ? 'sprite-bottom' : 'center';
+        indicator.dataset.positionAnchor = 'center';
 
         const roundedLeft = Math.round(leftValue);
         const roundedTop = Math.round(topValue);
@@ -869,12 +857,9 @@
             // Максимально допустимый сдвиг при порядке scale→translate:
             // s * |t|% * W <= (s - 1) * W / 2  => |t|% <= 50 * (s - 1) / s
             const safeShift = 50 * (scale - 1) / scale;
-            const maxShift = safeShift - 0.7; // дополнительный запас 0.7%
             function clamp(v, a) { return v < -a ? -a : (v > a ? a : v); }
-            // Для завода и типографии жёстче ограничиваем, чтобы гарантированно не было видно «за картой»
-            const isEdgeSensitive = (building === 'factory' || building === 'print');
-            const tx = isEdgeSensitive ? clamp(rawTX, maxShift) : clamp(rawTX, safeShift);
-            const ty = isEdgeSensitive ? clamp(rawTY, maxShift) : clamp(rawTY, safeShift);
+            const tx = clamp(rawTX, safeShift);
+            const ty = clamp(rawTY, safeShift);
             mainMenuImage.style.transition = 'transform 0.8s cubic-bezier(0.25, 0.46, 0.45, 0.94)';
             mainMenuImage.style.transform = `scale(${scale}) translate(${tx}%, ${ty}%)`;
             

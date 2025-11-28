@@ -23,6 +23,30 @@
     var buildingsRoot = document.getElementById('pure-map-buildings');
     if(!stage || !content || !bg || !buildingsRoot){ return; }
     
+    // КРИТИЧЕСКИ ВАЖНО: настраиваем стили для мобильных устройств
+    // Убеждаемся, что карта всегда видна и не скрывается
+    stage.style.position = 'absolute';
+    stage.style.inset = '0';
+    stage.style.overflow = 'hidden';
+    stage.style.zIndex = '1';
+    stage.style.background = 'transparent';
+    stage.style.pointerEvents = 'auto';
+    stage.style.touchAction = 'none'; // Отключаем нативный скролл/зум
+    stage.style.webkitTapHighlightColor = 'transparent';
+    stage.style.webkitTouchCallout = 'none';
+    stage.style.userSelect = 'none';
+    
+    // Убеждаемся, что content всегда виден
+    content.style.position = 'absolute';
+    content.style.left = '0';
+    content.style.top = '0';
+    content.style.transformOrigin = '0 0';
+    content.style.willChange = 'transform';
+    content.style.backfaceVisibility = 'hidden';
+    content.style.opacity = '1';
+    content.style.visibility = 'visible';
+    content.style.display = 'block';
+    
     // Создаём отдельный контейнер для статичных кругов (вне transform)
     var circlesContainer = document.createElement('div');
     circlesContainer.id = 'pure-map-circles';
@@ -36,9 +60,7 @@
     circlesContainer.style.overflow = 'hidden'; // Скрываем круги за пределами viewport
     stage.appendChild(circlesContainer);
     
-    // Оптимизация производительности для плавного свайпа
-    content.style.willChange = 'transform';
-    content.style.backfaceVisibility = 'hidden';
+    // Оптимизация производительности для плавного свайпа (уже настроено выше)
 
     // Панорамирование/зум - объявляем state раньше, чтобы использовать в функциях
     var state = { scale: 0.18, minScale: 0.12, maxScale: 3, x: 0, y: 0, dragging: false, lastX: 0, lastY: 0, vx: 0, vy: 0 };
@@ -305,7 +327,11 @@
         clampPan();
         // Применяем трансформацию синхронно для мгновенного обновления карты
         // Используем translate3d для аппаратного ускорения
+        // КРИТИЧЕСКИ ВАЖНО: убеждаемся, что карта всегда видна
         content.style.transform = 'translate3d('+state.x+'px,'+state.y+'px,0) scale('+state.scale+')';
+        content.style.opacity = '1';
+        content.style.visibility = 'visible';
+        content.style.display = 'block';
         
         // Батчинг обновлений кругов для улучшения производительности
         // Обновляем круги через requestAnimationFrame, чтобы не блокировать основной поток
@@ -488,6 +514,28 @@
     
     // Отключаем нативный скролл/зум браузера для корректного свайпа
     try{ stage.style.touchAction = 'none'; }catch(e){}
+    
+    // КРИТИЧЕСКИ ВАЖНО: защита от скрытия карты на мобильных устройствах
+    var ensureMapVisible = function(){
+        if(content && (content.style.opacity !== '1' || content.style.visibility !== 'visible' || content.style.display === 'none')){
+            content.style.opacity = '1';
+            content.style.visibility = 'visible';
+            content.style.display = 'block';
+        }
+        if(stage && (stage.style.opacity !== '1' || stage.style.visibility !== 'visible' || stage.style.display === 'none')){
+            stage.style.opacity = '1';
+            stage.style.visibility = 'visible';
+            stage.style.display = 'block';
+        }
+    };
+    
+    // Периодически проверяем, что карта видна (только на мобильных устройствах)
+    if(/Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent)){
+        setInterval(ensureMapVisible, 200);
+        // Также проверяем при каждом touch событии
+        stage.addEventListener('touchstart', ensureMapVisible, { passive: true });
+        stage.addEventListener('touchmove', ensureMapVisible, { passive: true });
+    }
 
     // Зум колесиком мыши для ПК (можно приближать и отдалять, но не меньше начального масштаба)
     stage.addEventListener('wheel', function(e){
@@ -575,6 +623,22 @@
     setOwnedUI('library');
     // Исправляем все круги после инициализации
     setTimeout(fixAllCircles, 100);
+    
+    // КРИТИЧЕСКИ ВАЖНО: финальная проверка видимости карты после инициализации
+    setTimeout(function(){
+        ensureMapVisible();
+        // Убеждаемся, что карта видна
+        if(content){
+            content.style.opacity = '1';
+            content.style.visibility = 'visible';
+            content.style.display = 'block';
+        }
+        if(stage){
+            stage.style.opacity = '1';
+            stage.style.visibility = 'visible';
+            stage.style.display = 'block';
+        }
+    }, 200);
 })();
 
 
