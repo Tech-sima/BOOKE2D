@@ -359,7 +359,11 @@
     // Оптимизированная функция для быстрого обновления только карты (без кругов)
     function applyTransformFast(){
         clampPan();
+        // КРИТИЧЕСКИ ВАЖНО: гарантируем видимость карты при каждом обновлении
         content.style.transform = 'translate3d('+state.x+'px,'+state.y+'px,0) scale('+state.scale+')';
+        content.style.opacity = '1';
+        content.style.visibility = 'visible';
+        content.style.display = 'block';
     }
 
     function fitToStage(){
@@ -425,7 +429,10 @@
     
     // Функция для плавного обновления через requestAnimationFrame
     function scheduleUpdate(){
-        if(rafId !== null) return; // Уже запланировано
+        // Отменяем предыдущий запрос, если он еще не выполнен, чтобы избежать накопления обновлений
+        if(rafId !== null){
+            cancelAnimationFrame(rafId);
+        }
         rafId = requestAnimationFrame(function(){
             rafId = null;
             applyTransform();
@@ -443,26 +450,23 @@
             var p2 = activePointers[pointerIds[1]];
             var currentDistance = getDistance(p1.x, p1.y, p2.x, p2.y);
             
-            // Вычисляем новый масштаб с плавным ограничением
+            // Вычисляем новый масштаб с ограничением
             var scaleFactor = currentDistance / pinchState.initialDistance;
             var newScale = pinchState.initialScale * scaleFactor;
             // Ограничиваем минимальным масштабом (начальным) и максимальным
             var minAllowedScale = initialScale !== null ? initialScale : state.minScale;
             newScale = Math.max(minAllowedScale, Math.min(state.maxScale, newScale));
             
-            // Плавное применение зума (интерполяция для более плавного эффекта)
-            var smoothing = 0.15; // Коэффициент сглаживания
-            state.scale = state.scale + (newScale - state.scale) * smoothing;
+            // Применяем зум напрямую без сглаживания для устранения лагов
+            state.scale = newScale;
             
             // Вычисляем точку на карте под центром пинча
             var mapX = (pinchState.centerX - state.x) / state.scale;
             var mapY = (pinchState.centerY - state.y) / state.scale;
             
-            // Применяем зум с плавной интерполяцией позиции
-            var targetX = pinchState.centerX - mapX * state.scale;
-            var targetY = pinchState.centerY - mapY * state.scale;
-            state.x = state.x + (targetX - state.x) * smoothing;
-            state.y = state.y + (targetY - state.y) * smoothing;
+            // Применяем зум с прямой установкой позиции
+            state.x = pinchState.centerX - mapX * state.scale;
+            state.y = pinchState.centerY - mapY * state.scale;
             
             // Используем быстрое обновление для плавности
             applyTransformFast();
@@ -574,13 +578,12 @@
         // Если уже на границе, не делаем ничего
         if(targetScale === state.scale) return;
         
-        // Плавная интерполяция зума для более плавного эффекта
-        var smoothing = 0.2; // Коэффициент сглаживания для зума колесиком
-        state.scale = state.scale + (targetScale - state.scale) * smoothing;
+        // Применяем зум напрямую без сглаживания для устранения лагов
+        state.scale = targetScale;
         
         // Вычисляем новую позицию, чтобы точка под курсором осталась на месте
         state.x = mouseX - mapX * state.scale;
-        state.y = mouseY - mapY * newScale;
+        state.y = mouseY - mapY * state.scale;
         
         // Используем быстрое обновление для плавности зума
         applyTransformFast();
